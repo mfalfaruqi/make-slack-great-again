@@ -30,6 +30,7 @@
 #ifdef MSGA_HAVE_MESSAGES
 #include "app/screens/messages/emoji_picker.h"
 #include "app/screens/messages/image_cache.h"
+#include "app/screens/messages/message_list.h"
 #include "app/screens/messages/thread_panel.h"
 #include "ui/datetime.h"
 #endif
@@ -727,7 +728,7 @@ TEST("header: the members popup says why the list couldn't load") {
     REQUIRE(until([&] { return hasText(p, "Couldn't load the members (ratelimited)."); }));
 }
 
-TEST("tabs: Pins lists the conversation's pinned messages; a card jumps back to Messages") {
+TEST("tabs: Pins shows the pinned messages as the Messages tab does; Go to message jumps back") {
     Harness h;
     auto   &tabs    = h.sh->tabs();
     auto   &page    = h.sh->pinsPage();
@@ -744,17 +745,57 @@ TEST("tabs: Pins lists the conversation's pinned messages; a card jumps back to 
     CHECK(page.visible());
     CHECK_FALSE(h.composer().visible());
     CHECK_STR(page.statusText(), "Loading pinned messages\xE2\x80\xA6");
-    REQUIRE(until([&] { return page.cardCount() == 1; }));
+    REQUIRE(until([&] { return page.count() == 1; }));
     CHECK(page.statusText().empty());
     CHECK_STR(page.author(0), "Sam Rivera");
-    CHECK_STR(page.pinnedBy(0), "Pinned");
-    // A click on the message: the Messages tab again, the composer back.
-    page.activate(0);
+#ifdef MSGA_HAVE_MESSAGES
+    // A message list of its own, in pins mode: the day, then the message as
+    // a full row, with the message menu led by "Go to message".
+    screens::MessageList *list = page.list();
+    REQUIRE(list != nullptr);
+    CHECK(list->visible());
+    CHECK(list->pinsMode());
+    REQUIRE(list->items().size() == 2);
+    CHECK(list->items()[0].kind == screens::MessageList::ItemKind::Day);
+    CHECK(list->items()[1].ts == page.ts(0));
+    CHECK_FALSE(list->items()[1].grouped);
+    const auto menu = list->menuItems(page.ts(0));
+    REQUIRE(!menu.empty());
+    CHECK(menu[0].id == screens::MessageList::kGoTo);
+    CHECK_STR(menu[0].label, "Go to message");
+    list->runMenuAction(page.ts(0), screens::MessageList::kGoTo);
+#else
+    page.goTo(0);
+#endif
     pump();
+    // The Messages tab again, the composer back.
     CHECK(tabs.active() == shell::ConvTabs::kMessages);
     CHECK_FALSE(page.visible());
     CHECK(h.composer().visible());
     CHECK(h.sh->current() == general);
+#ifdef MSGA_HAVE_MESSAGES
+    // A plain click on the pinned message does the same.
+    h.sh->showTab(shell::ConvTabs::kPins);
+    REQUIRE(until([&] { return page.count() == 1 && list->visible(); }));
+    pump();
+    ui::View *row = list->list().viewFor(1);
+    REQUIRE(row != nullptr);
+    const ui::RectF r  = row->windowRect();
+    auto           *hk = app().platform().testHooks();
+    for (const double x : {r.x + r.w - 40.0, r.x + 120.0}) { // off the text, then on it
+        if (tabs.active() != shell::ConvTabs::kPins) {
+            h.sh->showTab(shell::ConvTabs::kPins);
+            REQUIRE(until([&] { return list->visible() && list->list().viewFor(1) != nullptr; }));
+            pump();
+        }
+        hk->injectPointerMove(h.win->native(), {x, r.y + r.h - 12.0});
+        pump();
+        hk->injectButton(h.win->native(), plat::Button::Left, true);
+        hk->injectButton(h.win->native(), plat::Button::Left, false);
+        REQUIRE(until([&] { return tabs.active() == shell::ConvTabs::kMessages; }));
+        CHECK_FALSE(page.visible());
+    }
+#endif
 }
 
 TEST("tabs: the Pins page follows a pin and an unpin, and says so when there are none") {
@@ -762,30 +803,46 @@ TEST("tabs: the Pins page follows a pin and an unpin, and says so when there are
     auto   &page = h.sh->pinsPage();
     h.sh->showTab(shell::ConvTabs::kPins);
     REQUIRE(until([&] { return str::startsWith(page.statusText(), "No pinned messages here"); }));
-    CHECK(page.cardCount() == 0);
+    CHECK(page.count() == 0);
     const ConvRef conv = h.sh->current();
     const auto   &msgs = h.store.conversation(conv).messages;
-    REQUIRE(msgs.size() >= 2);
+    REQUIRE(msgs.size() >= 3);
+    // Two neighbours by one author would group in the conversation: here
+    // each pinned message is a row of its own, oldest first.
     const Ts first = msgs[0].ts, second = msgs[1].ts;
-    // Pinned from elsewhere while the tab is up: the list again, newest first.
-    h.backend.setPinned(conv, first, true);
     h.backend.setPinned(conv, second, true);
-    REQUIRE(until([&] { return page.cardCount() == 2; }));
+    h.backend.setPinned(conv, first, true);
+    REQUIRE(until([&] { return page.count() == 2; }));
     CHECK(page.statusText().empty());
-    CHECK_STR(page.pinnedBy(0), "Pinned by Alex Kim");
-    // A card's "Unpin": the message unpinned, its card gone.
-    page.unpin(0);
-    REQUIRE(until([&] { return page.cardCount() == 1; }));
+    CHECK(page.ts(0) == first);
+    CHECK(page.ts(1) == second);
+#ifdef MSGA_HAVE_MESSAGES
+    screens::MessageList *list = page.list();
+    CHECK(list->visible());
+    for (const auto &it : list->items())
+        CHECK_FALSE(it.grouped);
+    // The row is the Store's message: a reaction shows without a reload.
+    h.backend.react(conv, first, "tada", true);
+    pump();
+    REQUIRE(list->message(first) != nullptr);
+    CHECK(list->message(first) == h.store.findMessage(conv, first));
+    // The menu's "Unpin from channel": the message unpinned, its row gone.
+    list->runMenuAction(second, screens::MessageList::kUnpin);
+#else
+    page.unpin(1);
+#endif
+    REQUIRE(until([&] { return page.count() == 1; }));
     CHECK_FALSE(h.store.findMessage(conv, second)->pinned);
     CHECK(h.store.findMessage(conv, first)->pinned);
+    CHECK(page.ts(0) == first);
     // Another conversation opens on Messages; its Pins tab starts afresh.
     h.sh->open(h.conv("C0GENERAL"));
     pump();
     CHECK(h.sh->tabs().active() == shell::ConvTabs::kMessages);
     CHECK_FALSE(page.visible());
     h.sh->showTab(shell::ConvTabs::kPins);
-    CHECK(page.cardCount() == 0); // #design's cards are gone
-    REQUIRE(until([&] { return page.cardCount() == 1; }));
+    CHECK(page.count() == 0); // #design's are gone
+    REQUIRE(until([&] { return page.count() == 1; }));
 }
 
 TEST("tabs: the Pins page says why the list couldn't load") {
@@ -796,7 +853,7 @@ TEST("tabs: the Pins page says why the list couldn't load") {
         return h.sh->pinsPage().statusText() ==
                "Couldn't load the pinned messages (missing_scope).";
     }));
-    CHECK(h.sh->pinsPage().cardCount() == 0);
+    CHECK(h.sh->pinsPage().count() == 0);
 }
 
 TEST("header: the members popup grows to its list when the count was unknown") {

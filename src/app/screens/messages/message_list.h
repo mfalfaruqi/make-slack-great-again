@@ -3,7 +3,8 @@
 //
 //   auto *list = parent->add<screens::MessageList>(ctx);
 //   list->style().flex(1);
-//   list->showConversation(conv);          // or showThread(conv, rootTs)
+//   list->showConversation(conv);          // or showThread(conv, rootTs),
+//                                          // or showPinned(conv, pins)
 //
 // Behaviour:
 //  - opens at the newest message and stays pinned there while new ones
@@ -72,6 +73,15 @@ public:
     void    showConversation(ConvRef conv);
     // Thread mode (the thread panel): the root, a "N replies" divider, the replies.
     void    showThread(ConvRef conv, Ts root);
+    // Pins mode (the Pins tab): just these messages of `conv`, oldest first
+    // under their day dividers, each a full row of its own (never grouped
+    // with a neighbour), read from the top. A message the Store holds is the
+    // Store's (so reactions, edits and its menu work as in the conversation);
+    // one it doesn't hold is drawn from the copy given here. No history is
+    // loaded and nothing is marked read. Called again for the same
+    // conversation, the list keeps its place.
+    void    showPinned(ConvRef conv, std::vector<model::Message> pins);
+    bool    pinsMode() const { return _pinsMode; }
     void    clear(); // shows nothing, stops observing
     ConvRef conversation() const { return _conv; }
     Ts      threadRoot() const { return _root; }
@@ -118,10 +128,17 @@ public:
     void jumpTo(Ts ts);
 
     // "Reply in thread" from the toolbar or menu (default: Context::openThread).
-    std::function<void(ConvRef, Ts)> onReply;
+    std::function<void(ConvRef, Ts)>      onReply;
     // "Edit message" on one's own message; unset = no Edit item. The shell's
     // composer handles the editing itself.
-    std::function<void(ConvRef, Ts)> onEdit;
+    std::function<void(ConvRef, Ts)>      onEdit;
+    // Pins mode's "Go to message" (a plain click on a row, or the message
+    // menu's first item): the message, and its thread's root for a reply
+    // (else 0).
+    std::function<void(Ts ts, Ts thread)> onGoTo;
+    // Pins mode: the menu's "Unpin from channel" was taken on this message
+    // (a message the Store doesn't hold changes nothing there).
+    std::function<void(Ts ts)>            onUnpinned;
 
     ui::VirtualList &list() { return *_list; }
 
@@ -189,6 +206,7 @@ public:
         kDeleteFile, // "Delete image…" / "Delete file…"
         kAllowAsker, // agent thread links (Context::agentLink)
         kUnlinkAgent,
+        kGoTo,              // pins mode: the message in its conversation (onGoTo)
         kRemindPreset = 40, // + 0…4: in 20 minutes … next week
         kRemindCustom = 45,
     };
@@ -307,51 +325,56 @@ private:
         int         state = 0; // 0 loading, 1 loaded, -1 failed
     };
 
-    Context                   &_ctx;
-    std::unique_ptr<Adapter>   _adapter;
-    ui::VirtualList           *_list    = nullptr;
-    ui::Label                 *_typing  = nullptr;
-    ListState                 *_state   = nullptr;
-    float                      _typingH = 22; // 0: no typing row (setTypingRow)
-    ui::View                  *_toolbar = nullptr;
-    ui::Clickable             *_tbEmoji = nullptr, *_tbForward = nullptr, *_tbMore = nullptr;
-    class ActionButton        *_tbSave = nullptr, *_tbAgent = nullptr;
-    ui::View                  *_fileBar = nullptr, *_fileView = nullptr; // the hovered file
-    Ts                         _fileTs = 0;
-    std::string                _filePath;
-    MessageRow                *_toolbarRow = nullptr;
-    std::vector<Item>          _items;
-    std::shared_ptr<char>      _alive; // guards timers and backend callbacks
-    ConvRef                    _conv = model::kNoConv;
-    Ts                         _root = 0, _markedTs = 0, _flashTs = 0, _jumpTs = 0;
-    uint32_t                   _observer  = 0;
-    plat::TimerId              _edgeTimer = 0, _flashTimer = 0, _usersTimer = 0;
+    Context                    &_ctx;
+    std::unique_ptr<Adapter>    _adapter;
+    ui::VirtualList            *_list    = nullptr;
+    ui::Label                  *_typing  = nullptr;
+    ListState                  *_state   = nullptr;
+    float                       _typingH = 22; // 0: no typing row (setTypingRow)
+    ui::View                   *_toolbar = nullptr;
+    ui::Clickable              *_tbEmoji = nullptr, *_tbForward = nullptr, *_tbMore = nullptr;
+    class ActionButton         *_tbSave = nullptr, *_tbAgent = nullptr;
+    ui::View                   *_fileBar = nullptr, *_fileView = nullptr; // the hovered file
+    Ts                          _fileTs = 0;
+    std::string                 _filePath;
+    MessageRow                 *_toolbarRow = nullptr;
+    std::vector<Item>           _items;
+    std::shared_ptr<char>       _alive; // guards timers and backend callbacks
+    ConvRef                     _conv = model::kNoConv;
+    Ts                          _root = 0, _markedTs = 0, _flashTs = 0, _jumpTs = 0;
+    uint32_t                    _observer  = 0;
+    plat::TimerId               _edgeTimer = 0, _flashTimer = 0, _usersTimer = 0;
     // The Store revisions the rows were last bound against (usersChanged).
-    const model::Store        *_seenStore   = nullptr;
-    uint64_t                   _seenProfile = 0, _seenText = 0;
-    int                        _rowBinds  = 0;
-    uint32_t                   _bodyEpoch = 0;
-    MessageRow                *_rows = nullptr; // every message row (live, kept, spare), linked
-    bool                       _loadingOlder = false, _loadingThread = false, _waiting = false;
+    const model::Store         *_seenStore   = nullptr;
+    uint64_t                    _seenProfile = 0, _seenText = 0;
+    int                         _rowBinds  = 0;
+    uint32_t                    _bodyEpoch = 0;
+    MessageRow                 *_rows = nullptr; // every message row (live, kept, spare), linked
+    bool                        _loadingOlder = false, _loadingThread = false, _waiting = false;
+    // Pins mode: the messages shown, oldest first (see showPinned).
+    std::vector<model::Message> _pinned;
+    bool                        _pinsMode = false;
+    Ts                          _pressTs  = 0; // the message a click went down on
+    ui::PointF                  _pressAt;
     // Selection.
-    TextPos                    _selAnchor, _selFocus;
-    bool                       _selDragging = false;
-    ui::PointF                 _selPointer;
-    plat::TimerId              _selScrollTimer = 0;
+    TextPos                     _selAnchor, _selFocus;
+    bool                        _selDragging = false;
+    ui::PointF                  _selPointer;
+    plat::TimerId               _selScrollTimer = 0;
     // Opening: where to land once the first page is laid out — the saved
     // position, else the first message after this read cursor (0: bottom).
-    std::vector<SavedAnchor>   _anchors;
-    SavedAnchor                _openAnchor;
-    Ts                         _openLastRead   = 0;
-    bool                       _openPending    = false;
-    bool                       _reading        = true;
+    std::vector<SavedAnchor>    _anchors;
+    SavedAnchor                 _openAnchor;
+    Ts                          _openLastRead   = 0;
+    bool                        _openPending    = false;
+    bool                        _reading        = true;
     // Inline threads, dismissed previews, folded images, expanded cards.
-    bool                       _threadsInline  = false;
-    Ts                         _openThreadRoot = 0;
+    bool                        _threadsInline  = false;
+    Ts                          _openThreadRoot = 0;
     // Not "_inline": a keyword to MSVC, and a macro (__inline) in mingw's CRT.
-    std::vector<Ts>            _inlineThreads;
-    std::vector<Key>           _dismissed, _folded, _expanded;
-    std::vector<CanvasPreview> _canvasPreviews;
+    std::vector<Ts>             _inlineThreads;
+    std::vector<Key>            _dismissed, _folded, _expanded;
+    std::vector<CanvasPreview>  _canvasPreviews;
 };
 
 } // namespace screens

@@ -1402,7 +1402,7 @@ void Shell::buildMain(View *parent) {
             _tabs->setCanvas(true, true, title);
     };
     // The Pins tab's page; a card's message opens in the Messages tab.
-    _pins = stack->add<PinsPage>(_ctx, _avatars);
+    _pins = stack->add<PinsPage>(_ctx);
     _pins->setVisible(false);
     _pins->onOpenMessage = [this](ConvRef c, Ts ts, Ts thread) {
         if (c == _current)

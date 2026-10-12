@@ -1107,6 +1107,10 @@ msgid "Unlink agent"
 msgstr "エージェントのリンクを解除"
 
 #: src/app/screens/messages/message_list.cpp
+msgid "Go to message"
+msgstr "メッセージに移動"
+
+#: src/app/screens/messages/message_list.cpp
 msgid "In 20 minutes"
 msgstr "20分後"
 
@@ -1259,11 +1263,11 @@ msgstr "ハドルが行われました"
 msgid "A huddle started"
 msgstr "ハドルが開始されました"
 
-#: src/app/screens/messages/rows.cpp src/app/screens/shell/pins_page.cpp
+#: src/app/screens/messages/rows.cpp
 msgid "Pinned by %1"
 msgstr "%1がピン留めしました"
 
-#: src/app/screens/messages/rows.cpp src/app/screens/shell/pins_page.cpp
+#: src/app/screens/messages/rows.cpp
 msgid "Pinned"
 msgstr "ピン留め済み"
 
@@ -2828,18 +2832,6 @@ msgstr "検索を閉じる"
 msgid "No results found."
 msgstr "結果が見つかりませんでした。"
 
-#: src/app/screens/shell/pins_page.cpp src/app/screens/shell/profile_card.cpp src/app/screens/shell/saved_page.cpp
-msgid "Message"
-msgstr "メッセージ"
-
-#: src/app/screens/shell/pins_page.cpp src/app/screens/shell/saved_page.cpp src/app/screens/shell/scheduled_page.cpp
-msgid "No preview available"
-msgstr "プレビューはありません"
-
-#: src/app/screens/shell/pins_page.cpp
-msgid "Unpin"
-msgstr "ピン留めを解除"
-
 #: src/app/screens/shell/pins_page.cpp
 msgid "Loading pinned messages…"
 msgstr "ピン留めされたメッセージを読み込み中…"
@@ -2868,6 +2860,10 @@ msgstr "アプリ"
 msgid "%1 local time"
 msgstr "現地時間 %1"
 
+#: src/app/screens/shell/profile_card.cpp src/app/screens/shell/saved_page.cpp
+msgid "Message"
+msgstr "メッセージ"
+
 #: src/app/screens/shell/quick_switcher.cpp
 msgid "Jump to a conversation…"
 msgstr "会話にジャンプ…"
@@ -2891,6 +2887,10 @@ msgstr "%1 には一致する会話がありません。他のワークスペー
 #: src/app/screens/shell/saved_page.cpp
 msgid "Reminder set for %1"
 msgstr "リマインダー: %1"
+
+#: src/app/screens/shell/saved_page.cpp src/app/screens/shell/scheduled_page.cpp
+msgid "No preview available"
+msgstr "プレビューはありません"
 
 #: src/app/screens/shell/saved_page.cpp src/app/screens/shell/sidebar.cpp
 msgid "Saved messages"
@@ -3928,6 +3928,9 @@ msgstr "ダウンロードに失敗しました: %1"
 #: src/app/update/updater.cpp
 msgid "Downloaded update is corrupt (checksum mismatch)."
 msgstr "ダウンロードした更新ファイルが破損しています（チェックサム不一致）。"
+
+#~ msgid "Unpin"
+#~ msgstr "ピン留めを解除"
 
 #~ msgid "Pinned messages"
 #~ msgstr "ピン留めされたメッセージ"

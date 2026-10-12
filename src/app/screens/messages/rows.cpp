@@ -1210,7 +1210,8 @@ void MessageRow::applyBanners(const model::Message &m, bool grouped) {
     // The banners stack above the message, before its padding.
     _pinText.clear();
     _savedText.clear();
-    if (m.pinned)
+    // Not in the Pins tab's list: every message there is pinned.
+    if (m.pinned && !_list.pinsMode())
         _pinText = m.pinnedBy != model::kNoUser
                        ? arg(tr("Pinned by %1"), st.user(m.pinnedBy).label())
                        : std::string(tr("Pinned"));

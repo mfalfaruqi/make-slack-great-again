@@ -667,6 +667,17 @@ const model::Message *MessageList::message(Ts ts) const {
     if (_conv == model::kNoConv)
         return nullptr;
     const model::Store &st = _ctx.store();
+    if (_pinsMode) {
+        // The Store's when it holds it (top-level or in a loaded thread),
+        // else the copy the list was given.
+        if (const model::Message *m = st.findMessage(_conv, ts))
+            return m;
+        const auto it =
+            std::lower_bound(_pinned.begin(), _pinned.end(), ts, [](const model::Message &m, Ts t) {
+                return m.ts < t;
+            });
+        return it != _pinned.end() && it->ts == ts ? &*it : nullptr;
+    }
     if (_root && ts != _root)
         if (const std::vector<model::Message> *r = st.replies(_conv, _root)) {
             const auto it =
@@ -696,6 +707,8 @@ void MessageList::clear() {
     _conv     = model::kNoConv;
     _root     = 0;
     _jumpTs   = 0;
+    _pinsMode = false;
+    _pinned.clear();
     hideToolbar();
     _items.clear();
     resetRows();
@@ -711,6 +724,8 @@ void MessageList::showConversation(ConvRef conv) {
     stopDragScroll();
     if (conv != _conv)
         _inlineThreads.clear();
+    _pinsMode = false;
+    _pinned.clear();
     _conv         = conv;
     _root         = 0;
     _markedTs     = 0;
@@ -744,7 +759,9 @@ void MessageList::showThread(ConvRef conv, Ts root) {
     _selAnchor = _selFocus = {};
     _selDragging           = false;
     stopDragScroll();
-    _openPending   = false;
+    _openPending = false;
+    _pinsMode    = false;
+    _pinned.clear();
     _conv          = conv;
     _root          = root;
     _jumpTs        = 0;
@@ -770,6 +787,37 @@ void MessageList::showThread(ConvRef conv, Ts root) {
         });
     }
     updateState();
+}
+
+void MessageList::showPinned(ConvRef conv, std::vector<model::Message> pins) {
+    hideToolbar();
+    model::sortByTs(pins);
+    // The same conversation again (a pin, an unpin): the rows that stay keep
+    // their place.
+    const bool again = _pinsMode && conv == _conv && conv != model::kNoConv;
+    if (!again) {
+        _selAnchor = _selFocus = {};
+        _selDragging           = false;
+        stopDragScroll();
+        _inlineThreads.clear();
+    }
+    _pinsMode      = true;
+    _pinned        = std::move(pins);
+    _conv          = conv;
+    _root          = 0;
+    _jumpTs        = 0;
+    _openPending   = false;
+    _loadingOlder  = false;
+    _loadingThread = false;
+    _list->setBottomAligned(false);
+    if (again) {
+        rebuild(true);
+        return;
+    }
+    rebuild(false);
+    resetRows();
+    subscribe();
+    updateTyping();
 }
 
 namespace {
@@ -819,12 +867,22 @@ void MessageList::rebuild(bool notify) {
                 prevDay        = day;
                 const bool sys = isSystem(m);
                 items.push_back(
-                    {m.ts, day, sys ? Kind::System : Kind::Message, prev && groupable(*prev, m)}
+                    {m.ts,
+                     day,
+                     sys ? Kind::System : Kind::Message,
+                     prev && !_pinsMode && groupable(*prev, m)}
                 );
                 prev = &m;
             }
         };
-        if (_root == 0) {
+        if (_pinsMode) {
+            // Each as the Store has it now, else as it was given.
+            std::vector<const model::Message *> run;
+            run.reserve(_pinned.size());
+            for (const model::Message &p : _pinned)
+                run.push_back(message(p.ts));
+            addRun(run, true);
+        } else if (_root == 0) {
             addRun(c.messages, true);
         } else if (_loadingThread) {
             // Nothing until the replies are in (the loading state).
@@ -882,7 +940,9 @@ void MessageList::updateState() {
         if (_conv != model::kNoConv) {
             const model::Conversation &c = _ctx.store().conversation(_conv);
             // Never loaded: no messages yet, but more before them.
-            loading = loading || (_root ? _loadingThread : c.messages.empty() && c.hasMoreBefore);
+            loading = loading || (_pinsMode ? false
+                                  : _root   ? _loadingThread
+                                            : c.messages.empty() && c.hasMoreBefore);
             s       = loading ? State::Loading : State::Empty;
         } else if (loading) {
             s = State::Loading;
@@ -916,6 +976,8 @@ bool MessageList::groupingHolds(size_t i) const {
     const model::Message *m = at(i);
     if (!m || isSystem(*m) != (_items[i].kind == Kind::System))
         return false;
+    if (_pinsMode) // never grouped
+        return !_items[i].grouped;
     const model::Message *prev = i > 0 ? at(i - 1) : nullptr;
     if ((prev && groupable(*prev, *m)) != _items[i].grouped)
         return false;
@@ -954,9 +1016,12 @@ void MessageList::onChange(const model::Change &ch) {
     default:
         break;
     }
-    const bool mine = _root == 0 ? ch.thread == 0
-                                 : ch.thread == _root || (ch.thread == 0 && ch.ts == _root) ||
-                                       ch.kind == CK::Reset;
+    // Pins mode shows replies beside top-level messages: any change may be
+    // one of its rows'.
+    const bool mine = _pinsMode    ? true
+                      : _root == 0 ? ch.thread == 0
+                                   : ch.thread == _root || (ch.thread == 0 && ch.ts == _root) ||
+                                         ch.kind == CK::Reset;
     // An inline thread's replies live in its root's row.
     if (!mine && _root == 0 && ch.thread && has(_inlineThreads, ch.thread)) {
         rowChanged(ch.thread);
@@ -1225,7 +1290,7 @@ void MessageList::scheduleEdgeCheck() {
 }
 
 void MessageList::checkEdges() {
-    if (_conv == model::kNoConv)
+    if (_conv == model::kNoConv || _pinsMode) // pins: nothing to read or load
         return;
     if (_root != 0) {
         // An open thread reads itself — on load and on each new reply
@@ -1381,8 +1446,12 @@ bool MessageList::onEvent(ui::Event &e) {
             }
         }
         clearSelection();
+        // Pins mode: a plain click on a message (its text, or anywhere on
+        // its row no control took) goes to it; see PointerUp.
+        _pressTs = _pinsMode && onGoTo ? (tp.ts ? tp.ts : _toolbarRow ? _toolbarRow->ts() : 0) : 0;
+        _pressAt = e.windowPos;
         if (!tp.ts)
-            return false;
+            return _pressTs != 0; // taken, so the release comes here
         _selDragging = true;
         _selPointer  = e.windowPos;
         select(tp, tp);
@@ -1399,14 +1468,27 @@ bool MessageList::onEvent(ui::Event &e) {
         }
         return false;
     case ui::EventType::PointerUp:
-    case ui::EventType::PointerCancel:
-        if (!_selDragging)
-            return false;
-        _selDragging = false;
-        stopDragScroll();
-        if (_selAnchor == _selFocus) // a plain click: no selection
-            clearSelection();
-        return true;
+    case ui::EventType::PointerCancel: {
+        const Ts   press    = std::exchange(_pressTs, 0);
+        const bool dragging = _selDragging;
+        bool       plain    = !dragging; // a press off the text selects nothing
+        if (dragging) {
+            _selDragging = false;
+            stopDragScroll();
+            plain = _selAnchor == _selFocus;
+            if (plain) // a plain click: no selection
+                clearSelection();
+        }
+        // Pins mode: released where it was pressed, nothing selected.
+        if (press && plain && e.type == ui::EventType::PointerUp && onGoTo &&
+            std::abs(e.windowPos.x - _pressAt.x) < 4 && std::abs(e.windowPos.y - _pressAt.y) < 4) {
+            if (const model::Message *m = message(press)) {
+                onGoTo(press, m->isReply() ? m->threadTs : 0);
+                return true;
+            }
+        }
+        return dragging || press != 0;
+    }
     case ui::EventType::KeyDown:
         if (!hasSelection())
             return false;
@@ -1644,6 +1726,11 @@ constexpr ui::MenuDef kItemDefs[] = {
      nullptr,
      nullptr},
     {MessageList::kUnlinkAgent, uint16_t(gfx::Icon::X), N_("Unlink agent"), nullptr, nullptr},
+    {MessageList::kGoTo,
+     uint16_t(gfx::Icon::CornerDownRight),
+     N_("Go to message"),
+     nullptr,
+     nullptr},
 };
 
 // Reminder presets, no icons.
@@ -1706,6 +1793,10 @@ std::vector<ui::MenuItem> MessageList::menuItems(Ts ts) const {
     // backend can take this one now (not while the session is working).
     const bool   canDelete = (agent || mine || (st.me != model::kNoUser && st.user(st.me).admin)) &&
                              _ctx.backend.canDeleteMessage(_conv, ts);
+    if (_pinsMode && onGoTo) {
+        addItem(items, kGoTo);
+        ui::addMenuSeparator(items);
+    }
     if (_root == 0 && !m->isReply()) {
         if (!agent)
             addItem(items, kReply);
@@ -1889,6 +1980,10 @@ void MessageList::runMenuAction(Ts ts, int id, const std::string &path, ui::Poin
         if (onEdit)
             onEdit(conv, ts);
         break;
+    case kGoTo:
+        if (onGoTo)
+            onGoTo(ts, msg->isReply() ? msg->threadTs : 0);
+        return; // the owner may have shown something else by now
     case kCopyLink:
         copy = _ctx.store().permalink(conv, ts, msg->isReply() ? msg->threadTs : 0);
         break;
@@ -1901,6 +1996,8 @@ void MessageList::runMenuAction(Ts ts, int id, const std::string &path, ui::Poin
     case kPin:
     case kUnpin:
         _ctx.backend.setPinned(conv, ts, id == kPin);
+        if (_pinsMode && id == kUnpin && onUnpinned)
+            onUnpinned(ts);
         break;
     case kSave:
     case kUnsave:
