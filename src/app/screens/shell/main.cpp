@@ -34,6 +34,7 @@
 #include "base/i18n.h"
 #include "base/time.h"
 #include "base/log.h"
+#include "base/process.h"
 #include "base/str.h"
 #include "gfx/icons_generated.h"
 #include "net/net.h"
@@ -74,7 +75,7 @@
 #include <string>
 #include <string_view>
 
-#if defined(MSGA_DEMO) && defined(__linux__)
+#if defined(MSGA_DEMO) && (defined(__linux__) || defined(__APPLE__))
 #include <cerrno>
 #include <csignal>
 #include <dirent.h>
@@ -104,7 +105,14 @@ volatile std::sig_atomic_t gStatsSignal = 0;
 // writes are throwaway ones. Before the platform starts: it reads them on first
 // use. Per process so that demo runs can overlap (scripts/demo-video.sh in
 // parallel); the dirs of earlier runs that are gone are removed here.
-#ifdef __linux__
+//
+// macOS: AppKit doesn't ask the environment for the home directory, but
+// CoreFoundation takes CFFIXED_USER_HOME for it, and with it Application
+// Support and Caches (plat's standardDir). The keychain and the native
+// settings store are the user's wherever the home is, so the run is marked
+// as the tests are (base::testProcess): credentials and the settings of
+// earlier versions go to an INI file under XDG_CONFIG_HOME, as on Linux.
+#if defined(__linux__) || defined(__APPLE__)
 bool wipeDir(const std::string &dir) {
     return nftw(
                dir.c_str(),
@@ -118,8 +126,8 @@ bool wipeDir(const std::string &dir) {
 #endif
 
 bool isolateDemoState(std::string *error) {
-#if !defined(__linux__)
-    *error = "demo mode redirects HOME/XDG_* and is Linux-only for now";
+#if !defined(__linux__) && !defined(__APPLE__)
+    *error = "demo mode redirects HOME/XDG_* and is Linux- and macOS-only for now";
     return false;
 #else
     const char                *tmpEnv = std::getenv("TMPDIR");
@@ -151,12 +159,17 @@ bool isolateDemoState(std::string *error) {
     setenv("XDG_DATA_HOME", file::join(state, "data").c_str(), 1);
     setenv("XDG_CACHE_HOME", file::join(state, "cache").c_str(), 1);
     setenv("XDG_STATE_HOME", file::join(state, "state").c_str(), 1);
+#ifdef __APPLE__
+    setenv("CFFIXED_USER_HOME", state.c_str(), 1);
+    setenv("MSGA_TEST_ISOLATED", "1", 1);
+    base::markTestProcess();
+#endif
     return true;
 #endif
 }
 
 std::string demoInstanceKey() {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
     return str::concat({identity::instanceKey(), "-demo-", str::number(getpid())});
 #else
     return str::concat({identity::instanceKey(), "-demo"});
