@@ -577,7 +577,10 @@ void sleepMs(int ms) {
 class ConfigLock {
 public:
     explicit ConfigLock(std::string path) : _path(std::move(path)) {
-        for (int i = 0; i < 100; ++i) { // up to ~5 s
+        // Up to 5 s by the clock, not by the number of tries: on a loaded
+        // machine a 50 ms sleep can take twice that, and a wait that
+        // stretched past 10 s would take a live holder's lock for a stale one.
+        for (const int64_t until = base::nowMicros() + 5'000'000; base::nowMicros() < until;) {
             if (makeDir()) {
                 _held = true;
                 return;
