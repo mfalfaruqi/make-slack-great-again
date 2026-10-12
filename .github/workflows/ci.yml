@@ -1,0 +1,79 @@
+# Build msga and run its test suites on Linux and macOS, and check the
+# formatting. Windows (MSYS2, scripts\build.ps1) is not covered yet.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch or pull request replaces the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The tree is formatted with clang-format 22: other majors give different
+  # output from the same .clang-format (scripts/clang-format-env.sh), so the
+  # version is pinned here. .clang-format-ignore leaves out the vendored and
+  # generated files.
+  format:
+    name: Format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format 22
+        run: pipx install 'clang-format==22.*'
+      - name: Check formatting
+        run: |
+          clang-format --version
+          git ls-files 'src/*.cpp' 'src/*.h' 'tests/*.cpp' 'tests/*.h' \
+            | xargs clang-format --dry-run --Werror
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # The toolchain the releases ship with.
+      CC: clang
+      CXX: clang++
+    steps:
+      - uses: actions/checkout@v4
+      # The script is the one list of what a build needs (apt packages).
+      - name: Install dependencies
+        run: scripts/configure-linux.sh
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      # The suites run on plat's headless backend: no display needed. A test
+      # that hangs fails after five minutes instead of holding the job.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 300 -j "$(nproc)"
+
+  macos:
+    name: macOS
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # CMake and clang come with the runner; FreeType and HarfBuzz are built
+      # by msga's own CMake.
+      - name: Install dependencies
+        run: brew install ninja
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      # Without crash_tests: on a developer Mac it hangs (its child process
+      # never finishes crashing). Take the -E away once that is understood.
+      - name: Test
+        run: >
+          ctest --test-dir build --output-on-failure --timeout 300
+          -j "$(sysctl -n hw.ncpu)" -E '^crash_tests$'
