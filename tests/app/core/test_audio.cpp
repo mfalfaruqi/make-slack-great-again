@@ -11,6 +11,7 @@
 #include "plat/audio.h"
 #include "plat/plat.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>

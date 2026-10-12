@@ -35,8 +35,10 @@
 #include "ui/datetime.h"
 #endif
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
+#include <unordered_map>
 
 using namespace model;
 using shell::shortcuts::Id;

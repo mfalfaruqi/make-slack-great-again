@@ -46,9 +46,11 @@
 #include <sys/stat.h>
 #endif
 #include <cstdlib>
+#include <optional>
 #include <random>
 #include <functional>
 #include <memory>
+#include <unordered_map>
 
 using namespace screens;
 using Kind = MessageList::ItemKind;

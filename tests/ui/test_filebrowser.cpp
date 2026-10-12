@@ -4,6 +4,7 @@
 #include "base/file.h"
 #include "harness.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <optional>
