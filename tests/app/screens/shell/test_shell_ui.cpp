@@ -19,6 +19,7 @@
 #include "screens/shell/gif_search.h"
 #include "screens/shell/header.h"
 #include "screens/shell/nav_chrome.h"
+#include "screens/shell/pins_page.h"
 #include "app/mrkdwn/markdown.h"
 #include "screens/shell/scheduled_page.h"
 #include "screens/shell/shell.h"
@@ -726,82 +727,76 @@ TEST("header: the members popup says why the list couldn't load") {
     REQUIRE(until([&] { return hasText(p, "Couldn't load the members (ratelimited)."); }));
 }
 
-namespace {
-ui::View *findText(ui::View *v, std::string_view s) {
-    if (v->accessibleName() == s)
-        return v;
-    for (size_t i = 0; i < v->childCount(); ++i)
-        if (ui::View *f = findText(v->child(i), s))
-            return f;
-    return nullptr;
-}
-} // namespace
-
-TEST("header: the pin button lists the conversation's pinned messages; a click jumps to one") {
+TEST("tabs: Pins lists the conversation's pinned messages; a card jumps back to Messages") {
     Harness h;
-    auto   &hd      = h.sh->header();
+    auto   &tabs    = h.sh->tabs();
+    auto   &page    = h.sh->pinsPage();
     ConvRef general = h.conv("C0GENERAL");
     h.sh->open(general);
     pump();
-    REQUIRE(hd.pins()->visible());
-    CHECK_STR(hd.pins()->tooltip(), "Pinned messages");
-    REQUIRE(hd.pins()->onClick != nullptr);
-    hd.pins()->onClick();
+    REQUIRE(tabs.tab(shell::ConvTabs::kPins)->visible());
+    CHECK_STR(tabs.tabText(shell::ConvTabs::kPins), "Pins");
+    CHECK_FALSE(page.visible());
+    REQUIRE(tabs.tab(shell::ConvTabs::kPins)->onClick != nullptr);
+    tabs.tab(shell::ConvTabs::kPins)->onClick();
+    // The page in the list's place, no composer; "Loading…" until it answers.
+    CHECK(tabs.active() == shell::ConvTabs::kPins);
+    CHECK(page.visible());
+    CHECK_FALSE(h.composer().visible());
+    CHECK_STR(page.statusText(), "Loading pinned messages\xE2\x80\xA6");
+    REQUIRE(until([&] { return page.cardCount() == 1; }));
+    CHECK(page.statusText().empty());
+    CHECK_STR(page.author(0), "Sam Rivera");
+    CHECK_STR(page.pinnedBy(0), "Pinned");
+    // A click on the message: the Messages tab again, the composer back.
+    page.activate(0);
     pump();
-    ui::Popup *p = h.win->topPopup();
-    REQUIRE(p != nullptr);
-    REQUIRE(until([&] { return hasText(p, "1 pinned message"); }));
-    ui::View *who = findText(p, "Sam Rivera");
-    REQUIRE(who != nullptr);
-    // The jump the shell is asked for: the message, in the channel.
-    ConvRef jumpConv = kNoConv;
-    Ts      jumpTs = 0, jumpThread = 1;
-    h.ctx.openMessage = [&](ConvRef c, Ts ts, Ts thread) {
-        jumpConv   = c;
-        jumpTs     = ts;
-        jumpThread = thread;
-    };
-    auto           *hk = app().platform().testHooks();
-    const ui::RectF r  = who->windowRect();
-    hk->injectPointerMove(h.win->native(), {r.x + 4.0, r.y + r.h / 2.0});
-    hk->injectButton(h.win->native(), plat::Button::Left, true);
-    hk->injectButton(h.win->native(), plat::Button::Left, false);
-    REQUIRE(until([&] { return jumpConv == general; }));
-    const model::Message *m = h.store.findMessage(general, jumpTs);
-    REQUIRE(m != nullptr);
-    CHECK(m->pinned);
-    CHECK(jumpThread == 0);
-    CHECK(h.win->topPopup() == nullptr);
+    CHECK(tabs.active() == shell::ConvTabs::kMessages);
+    CHECK_FALSE(page.visible());
+    CHECK(h.composer().visible());
+    CHECK(h.sh->current() == general);
 }
 
-TEST("header: the pins popup follows a new pin, and says so when there are none") {
+TEST("tabs: the Pins page follows a pin and an unpin, and says so when there are none") {
     Harness h; // #design: nothing pinned
-    auto   &hd = h.sh->header();
-    hd.openPins({900, 40, 28, 28});
-    pump();
-    REQUIRE(h.win->topPopup() != nullptr);
-    REQUIRE(until([&] { return hasText(h.win->topPopup(), "No pinned messages here yet."); }));
-    h.win->topPopup()->close();
-    pump();
-    const auto &msgs = h.store.conversation(h.sh->current()).messages;
+    auto   &page = h.sh->pinsPage();
+    h.sh->showTab(shell::ConvTabs::kPins);
+    REQUIRE(until([&] { return str::startsWith(page.statusText(), "No pinned messages here"); }));
+    CHECK(page.cardCount() == 0);
+    const ConvRef conv = h.sh->current();
+    const auto   &msgs = h.store.conversation(conv).messages;
     REQUIRE(msgs.size() >= 2);
-    h.backend.setPinned(h.sh->current(), msgs[0].ts, true);
-    h.backend.setPinned(h.sh->current(), msgs[1].ts, true);
-    hd.openPins({900, 40, 28, 28});
+    const Ts first = msgs[0].ts, second = msgs[1].ts;
+    // Pinned from elsewhere while the tab is up: the list again, newest first.
+    h.backend.setPinned(conv, first, true);
+    h.backend.setPinned(conv, second, true);
+    REQUIRE(until([&] { return page.cardCount() == 2; }));
+    CHECK(page.statusText().empty());
+    CHECK_STR(page.pinnedBy(0), "Pinned by Alex Kim");
+    // A card's "Unpin": the message unpinned, its card gone.
+    page.unpin(0);
+    REQUIRE(until([&] { return page.cardCount() == 1; }));
+    CHECK_FALSE(h.store.findMessage(conv, second)->pinned);
+    CHECK(h.store.findMessage(conv, first)->pinned);
+    // Another conversation opens on Messages; its Pins tab starts afresh.
+    h.sh->open(h.conv("C0GENERAL"));
     pump();
-    REQUIRE(until([&] { return hasText(h.win->topPopup(), "2 pinned messages"); }));
+    CHECK(h.sh->tabs().active() == shell::ConvTabs::kMessages);
+    CHECK_FALSE(page.visible());
+    h.sh->showTab(shell::ConvTabs::kPins);
+    CHECK(page.cardCount() == 0); // #design's cards are gone
+    REQUIRE(until([&] { return page.cardCount() == 1; }));
 }
 
-TEST("header: the pins popup says why the list couldn't load") {
+TEST("tabs: the Pins page says why the list couldn't load") {
     Harness h;
     h.backend.pinsError = "missing_scope";
-    h.sh->header().openPins({900, 40, 28, 28});
-    pump();
-    ui::Popup *p = h.win->topPopup();
-    REQUIRE(p != nullptr);
+    h.sh->showTab(shell::ConvTabs::kPins);
     REQUIRE(until([&] {
-        return hasText(p, "Couldn't load the pinned messages (missing_scope).");
+        return h.sh->pinsPage().statusText() ==
+               "Couldn't load the pinned messages (missing_scope).";
     }));
+    CHECK(h.sh->pinsPage().cardCount() == 0);
 }
 
 TEST("header: the members popup grows to its list when the count was unknown") {

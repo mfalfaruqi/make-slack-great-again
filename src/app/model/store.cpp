@@ -116,6 +116,7 @@ Message Message::clone() const {
     m.threadTs    = threadTs;
     m.latestReply = latestReply;
     m.user        = user;
+    m.pinnedBy    = pinnedBy;
     m.replyCount  = replyCount;
     m.text        = text;
     m.edited      = edited;

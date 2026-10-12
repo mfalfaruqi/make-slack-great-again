@@ -1,17 +1,16 @@
 // The conversation header and its tab strip, with the header avatar and the
 // members popup:
 //
-//   [avatar] #name ······ [people 9] [headphones] [pin] [star] [search]
-//   Messages | Design crit — week 38                    (or "Add canvas")
+//   [avatar] #name ··········· [people 9] [headphones] [star] [search]
+//   Messages | Design crit — week 38 | Pins             (or "Add canvas")
 //
 // 48 px tall, 16 px in on the left, 8 on the right. A DM shows the peer's
 // avatar with its presence dot, a group DM its stacked member avatars and
 // count (a click lists them); a channel shows the members button (a click
 // opens the searchable member list). The huddle button shows only where the
-// service has huddles, the pin button (a click lists the conversation's
-// pinned messages; a click on one jumps to it) only where it can list them. On macOS the header is
-// the unified title bar's content instead: the name centred, the actions on the right, as tall as
-// the title bar.
+// service has huddles. On macOS the header is the unified title bar's
+// content instead: the name centred, the
+// actions on the right, as tall as the title bar.
 #pragma once
 
 #include "screens/common/context.h"
@@ -40,7 +39,6 @@ public:
     ui::Clickable *members() const { return _members; }
     ui::Label     *memberCount() const { return _count; }
     ui::Clickable *huddle() const { return _huddle; }
-    ui::Clickable *pins() const { return _pins; }
     ui::Clickable *star() const;
     ui::Clickable *search() const { return _search; }
     bool           starred() const;
@@ -52,8 +50,6 @@ public:
     std::function<void()> onSearch;
     // The member list: shown under `anchor` (window rect).
     void                  openMembers(ui::RectF anchor);
-    // The conversation's pinned messages, the same way.
-    void                  openPins(ui::RectF anchor);
 
 private:
     screens::Context               &_ctx;
@@ -61,7 +57,6 @@ private:
     HeaderAvatar                   *_avatar = nullptr;
     ui::Label                      *_title = nullptr, *_count = nullptr;
     ui::Clickable                  *_members = nullptr, *_huddle = nullptr, *_search = nullptr;
-    ui::Clickable                  *_pins = nullptr;
     StarButton                     *_star = nullptr;
     model::ConvRef                  _conv = model::kNoConv;
     std::unordered_set<std::string> _membersAsked; // group DMs whose members were asked for
@@ -71,17 +66,22 @@ private:
 std::string huddleJoinUrl(const model::Store &st, model::ConvRef conv);
 
 // The conversation tabs: 38 px (the bottom divider included), tabs 16 px in,
-// the active one bold with a 2 px underline over the divider.
+// the active one bold with a 2 px underline over the divider. Messages, the
+// canvas, then Pins (the conversation's pinned messages, pins_page.h).
 class ConvTabs : public ui::View {
 public:
     ConvTabs();
     // hasCanvas: the second tab names the canvas (title, "Untitled"), else
     // offers "Add canvas"; visible = false leaves only Messages.
     void           setCanvas(bool visible, bool hasCanvas, std::string title);
-    void           setActive(int tab); // 0 Messages, 1 canvas
+    // The Pins tab, where the service lists a conversation's pins.
+    void           setPins(bool visible);
+    void           setActive(int tab); // kMessages, kCanvas, kPins
     int            active() const { return _active; }
     ui::Clickable *tab(int i) const { return _tabs[i]; }
     std::string    tabText(int i) const;
+
+    static constexpr int kMessages = 0, kCanvas = 1, kPins = 2, kCount = 3;
 
     std::function<void(int tab)> onSelect;
 
@@ -90,8 +90,8 @@ public:
 
 private:
     void           restyle();
-    ui::Clickable *_tabs[2] = {};
-    int            _active  = 0;
+    ui::Clickable *_tabs[kCount] = {};
+    int            _active       = 0;
 };
 
 } // namespace shell

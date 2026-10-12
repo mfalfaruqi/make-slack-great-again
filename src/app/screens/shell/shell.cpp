@@ -29,6 +29,7 @@
 #include "screens/shell/session_status_dialog.h"
 #include "screens/shell/teammate_page.h"
 #include "screens/shell/overview_page.h"
+#include "screens/shell/pins_page.h"
 #include "screens/shell/saved_page.h"
 #include "screens/shell/scheduled_page.h"
 #include "screens/shell/threads_page.h"
@@ -1326,7 +1327,7 @@ void Shell::buildMain(View *parent) {
 #endif
     _header->onSearch     = [this] { openSearch(); };
     _tabs                 = _mainPane->add<ConvTabs>();
-    _tabs->onSelect       = [this](int tab) { showCanvas(tab == 1); };
+    _tabs->onSelect       = [this](int tab) { showTab(tab); };
     // The huddle banner: under the tabs, over the messages.
     _huddleBanner         = _mainPane->add<HuddleBanner>();
     _huddleBanner->onJoin = [this] {
@@ -1400,6 +1401,14 @@ void Shell::buildMain(View *parent) {
         if (_current != kNoConv)
             _tabs->setCanvas(true, true, title);
     };
+    // The Pins tab's page; a card's message opens in the Messages tab.
+    _pins = stack->add<PinsPage>(_ctx, _avatars);
+    _pins->setVisible(false);
+    _pins->onOpenMessage = [this](ConvRef c, Ts ts, Ts thread) {
+        if (c == _current)
+            showTab(ConvTabs::kMessages);
+        jumpToMessage(c, ts, thread);
+    };
     buildTeammatePage(stack); // an agent workspace's teammate page (shell_agents.cpp)
     buildThreadsPage(stack);
     buildSavedPage(stack);
@@ -1472,6 +1481,7 @@ void Shell::setWaiting(bool on) {
         _composer->setVisible(false);
         _typing->setVisible(false);
         _canvas->setVisible(false);
+        _pins->setVisible(false);
         _welcome->setVisible(false);
         _messages->setVisible(true);
     } else if (_current == kNoConv) {
@@ -1678,6 +1688,7 @@ void Shell::leaveWorkspace() {
     _sidebar->select(kNoConv);
     showCanvas(false);
     _canvas->clear();
+    _pins->clear();
 #ifdef MSGA_HAVE_MESSAGES
     static_cast<screens::MessageList *>(_messages)->clear();
 #else
@@ -1948,6 +1959,7 @@ void Shell::leaveConversationChrome(bool keepComposer) {
     _welcome->setVisible(false);
     _canvas->flushPendingSave();
     _canvas->setVisible(false);
+    _pins->setVisible(false);
     _typing->setTarget(kNoConv, 0);
     _typing->setVisible(false);
     _ctx.backend.setActiveConversation(kNoConv, 0);
@@ -2028,19 +2040,30 @@ Composer *Shell::threadComposer() {
     return _thread ? _thread->composer : nullptr;
 }
 
-// The tabs: Messages, or the canvas page (the conversation's canvas, or
-// "Add canvas": a blank page the first save turns into one).
-void Shell::showCanvas(bool on) {
-    on = on && _current != kNoConv;
-    if (!on)
+// The tabs: Messages, the canvas page (the conversation's canvas, or
+// "Add canvas": a blank page the first save turns into one), or the Pins
+// page (the conversation's pinned messages). Only Messages has the composer.
+void Shell::showTab(int tab) {
+    if (_current == kNoConv)
+        tab = ConvTabs::kMessages;
+    const bool canvas = tab == ConvTabs::kCanvas, pins = tab == ConvTabs::kPins;
+    const bool list = !canvas && !pins;
+    if (!canvas)
         _canvas->flushPendingSave(); // on every tab / conversation switch
-    _canvas->setVisible(on);
-    _messages->setVisible(!on && _current != kNoConv);
-    _composer->setVisible(!on);
-    _typing->setVisible(!on && !_typing->text().empty());
-    _tabs->setActive(on ? 1 : 0);
-    if (on)
+    _canvas->setVisible(canvas);
+    _pins->setVisible(pins);
+    _messages->setVisible(list && _current != kNoConv);
+    _composer->setVisible(list);
+    _typing->setVisible(list && !_typing->text().empty());
+    _tabs->setActive(tab);
+    if (canvas)
         _canvas->open(_current);
+    if (pins)
+        _pins->open(_current);
+}
+
+void Shell::showCanvas(bool on) {
+    showTab(on ? ConvTabs::kCanvas : ConvTabs::kMessages);
 }
 
 // While the open conversation (its header on
@@ -2067,6 +2090,12 @@ void Shell::updateHeader() {
         !c.canvasId.empty() || !c.canvasTitle.empty(),
         c.canvasTitle
     );
+    // Pins where the service lists them; agent sessions have none.
+    const bool pins =
+        _ctx.backend.capabilities().pinnedList && !_ctx.backend.isAgentSession(_current);
+    if (!pins && _pins->visible())
+        showTab(ConvTabs::kMessages);
+    _tabs->setPins(pins);
 }
 
 // The roster may not say whether a channel has a

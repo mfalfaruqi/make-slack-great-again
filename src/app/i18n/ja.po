@@ -1259,11 +1259,11 @@ msgstr "ハドルが行われました"
 msgid "A huddle started"
 msgstr "ハドルが開始されました"
 
-#: src/app/screens/messages/rows.cpp
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/pins_page.cpp
 msgid "Pinned by %1"
 msgstr "%1がピン留めしました"
 
-#: src/app/screens/messages/rows.cpp
+#: src/app/screens/messages/rows.cpp src/app/screens/shell/pins_page.cpp
 msgid "Pinned"
 msgstr "ピン留め済み"
 
@@ -2772,35 +2772,6 @@ msgstr "表示するメンバーがいません。"
 msgid "No one here matches “%1”."
 msgstr "「%1」に一致するメンバーはいません。"
 
-#: src/app/screens/shell/header.cpp
-msgid "Pinned messages"
-msgstr "ピン留めされたメッセージ"
-
-#: src/app/screens/shell/header.cpp
-msgid "Loading pinned messages…"
-msgstr "ピン留めされたメッセージを読み込み中…"
-
-#: src/app/screens/shell/header.cpp src/app/screens/shell/profile_card.cpp src/app/screens/shell/saved_page.cpp
-msgid "Message"
-msgstr "メッセージ"
-
-#: src/app/screens/shell/header.cpp src/app/screens/shell/saved_page.cpp src/app/screens/shell/scheduled_page.cpp
-msgid "No preview available"
-msgstr "プレビューはありません"
-
-#: src/app/screens/shell/header.cpp
-msgid "%n pinned message"
-msgid_plural "%n pinned messages"
-msgstr[0] "%n件のピン留めされたメッセージ"
-
-#: src/app/screens/shell/header.cpp
-msgid "No pinned messages here yet."
-msgstr "ここにはまだピン留めされたメッセージがありません。"
-
-#: src/app/screens/shell/header.cpp
-msgid "Couldn't load the pinned messages (%1)."
-msgstr "ピン留めされたメッセージを読み込めませんでした（%1）。"
-
 #: src/app/screens/shell/header.cpp src/app/screens/shell/huddle_banner.cpp
 msgid "Opens the huddle in Slack for web"
 msgstr "Slack（ブラウザ版）でハドルを開きます"
@@ -2830,6 +2801,10 @@ msgid "Add canvas"
 msgstr "canvasを追加"
 
 #: src/app/screens/shell/header.cpp
+msgid "Pins"
+msgstr "ピン"
+
+#: src/app/screens/shell/header.cpp
 msgid "Untitled"
 msgstr "無題"
 
@@ -2852,6 +2827,30 @@ msgstr "検索を閉じる"
 #: src/app/screens/shell/message_search.cpp
 msgid "No results found."
 msgstr "結果が見つかりませんでした。"
+
+#: src/app/screens/shell/pins_page.cpp src/app/screens/shell/profile_card.cpp src/app/screens/shell/saved_page.cpp
+msgid "Message"
+msgstr "メッセージ"
+
+#: src/app/screens/shell/pins_page.cpp src/app/screens/shell/saved_page.cpp src/app/screens/shell/scheduled_page.cpp
+msgid "No preview available"
+msgstr "プレビューはありません"
+
+#: src/app/screens/shell/pins_page.cpp
+msgid "Unpin"
+msgstr "ピン留めを解除"
+
+#: src/app/screens/shell/pins_page.cpp
+msgid "Loading pinned messages…"
+msgstr "ピン留めされたメッセージを読み込み中…"
+
+#: src/app/screens/shell/pins_page.cpp
+msgid "Couldn't load the pinned messages (%1)."
+msgstr "ピン留めされたメッセージを読み込めませんでした（%1）。"
+
+#: src/app/screens/shell/pins_page.cpp
+msgid "No pinned messages here yet. Pin a message from its menu to keep it at hand for everyone in the conversation."
+msgstr "ここにはまだピン留めされたメッセージがありません。メッセージのメニューからピン留めすると、会話の全員がいつでも確認できます。"
 
 #: src/app/screens/shell/profile_card.cpp
 msgid "Workspace Owner"
@@ -3929,6 +3928,16 @@ msgstr "ダウンロードに失敗しました: %1"
 #: src/app/update/updater.cpp
 msgid "Downloaded update is corrupt (checksum mismatch)."
 msgstr "ダウンロードした更新ファイルが破損しています（チェックサム不一致）。"
+
+#~ msgid "Pinned messages"
+#~ msgstr "ピン留めされたメッセージ"
+
+#~ msgid "%n pinned message"
+#~ msgid_plural "%n pinned messages"
+#~ msgstr[0] "%n件のピン留めされたメッセージ"
+
+#~ msgid "No pinned messages here yet."
+#~ msgstr "ここにはまだピン留めされたメッセージがありません。"
 
 #~ msgid "Just now"
 #~ msgstr "たった今"

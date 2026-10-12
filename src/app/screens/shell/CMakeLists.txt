@@ -34,6 +34,7 @@ add_library(msga_screens_shell STATIC
     sidebar_footer.cpp
     teammate_page.cpp
     overview_page.cpp
+    pins_page.cpp
     saved_page.cpp
     scheduled_page.cpp
     threads_page.cpp

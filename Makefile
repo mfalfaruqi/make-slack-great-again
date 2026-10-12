@@ -63,8 +63,11 @@ run: build ## Build, then start msga
 run-debug: debug ## Debug build, then start msga
 	build-debug/$(BIN_PATH)
 
-run-demo: demo ## Start msga on the test fixture workspace
-	build/$(BIN_PATH) --demo tests/assets
+# The tests' fixture plus #updates (100 messages, 25 pinned), written to
+# build/demo: tests/assets itself stays as the suites expect it.
+run-demo: demo ## Start msga on the demo workspace (the test fixture plus #updates)
+	scripts/gen-demo-fixture.py build/demo
+	build/$(BIN_PATH) --demo build/demo
 
 format: ## clang-format the src/ and tests/ trees (FILES="a.cpp b.h" for some)
 	scripts/format.sh $(FILES)

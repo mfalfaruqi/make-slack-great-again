@@ -2,13 +2,10 @@
 
 #include "base/i18n.h"
 #include "base/str.h"
-#include "base/time.h"
 #include "base/utf8.h"
 #include "gfx/icons_generated.h"
 #include "screens/common/user_search.h"
-#include "screens/shell/message_search.h"
 #include "screens/shell/nav_chrome.h"
-#include "screens/shell/overview_page.h"
 #include "screens/shell/session_dialogs.h"
 #include "screens/shell/shell_text.h"
 
@@ -273,98 +270,6 @@ private:
     bool              _loaded = false;
 };
 
-// ── Pinned messages popup ───────────────────────────────────────────────────
-
-// The conversation's pinned messages as chat rows (avatar, name, time, two
-// lines of the text), the latest pin first; a click on one closes the popup
-// and jumps to the message, inside its thread for a reply.
-class PinsPopup final : public Popup {
-public:
-    PinsPopup(screens::Context &ctx, Avatars &avatars, ConvRef conv)
-        : _ctx(ctx), _avatars(avatars), _conv(conv) {
-        style().width(kWidth).padding(kPad, 12, kPad, kPad).spacing(8);
-        _title = add<Label>(tr("Pinned messages"), Font::SmallBold, C::TextMuted);
-        _title->style().margins(4, 0, 4, 0);
-        _scroll = add<ScrollView>();
-        _scroll->setVisible(false);
-        _rows = _scroll->setContent(std::make_unique<View>());
-        _rows->style().spacing(2);
-        _message =
-            add<Label>(tr("Loading pinned messages\xE2\x80\xA6"), Font::Control, C::TextMuted);
-        _message->setAlign(text::LayoutOptions::Align::Center);
-        _message->style().height(kMessageH);
-    }
-    void setPins(std::vector<model::Message> pins) {
-        const model::Store &st = _ctx.store();
-        _rows->clearChildren();
-        for (const model::Message &m : pins) {
-            auto *row = _rows->add<Clickable>();
-            row->setLook({C::None, C::FormHighlight, C::FormHighlight, C::None, 6});
-            row->setCursor(plat::Cursor::Hand);
-            const model::User &u   = st.user(m.user);
-            const std::string &bot = m.extra ? m.extra->botName : std::string();
-            const std::string  who = !bot.empty()               ? bot
-                                     : m.user != model::kNoUser ? std::string(u.label())
-                                                                : std::string(tr("Message"));
-            View              *col = fillMessageRow(
-                row,
-                _avatars,
-                who,
-                m.extra && !m.extra->botAvatar.empty() ? m.extra->botAvatar : u.avatar,
-                base::dateTimeLabel(model::tsSecs(m.ts), _ctx.backend.nowSecs())
-            );
-            row->style().padding(8, 6, 8, 6);
-            const std::string text = searchPreview(st, m.text);
-            auto             *body = col->add<Label>(
-                !text.empty()        ? text
-                : !m.files().empty() ? m.files().front().name
-                                     : std::string(tr("No preview available")),
-                Font::Body
-            );
-            body->setMaxLines(2);
-            body->setHitTransparent(true);
-            row->onClick = [this, ts = m.ts, thread = m.isReply() ? m.threadTs : 0] {
-                // The popup, and this row with it, goes with close(): what
-                // the jump needs is taken first.
-                const auto      open = _ctx.openMessage;
-                const ConvRef   conv = _conv;
-                const model::Ts at = ts, in = thread;
-                close();
-                if (open)
-                    open(conv, at, in);
-            };
-        }
-        _title->setText(
-            pins.empty()
-                ? std::string(tr("Pinned messages"))
-                : i18n::trn("%n pinned message", "%n pinned messages", int64_t(pins.size()))
-        );
-        // Whole content up to kMaxListH, then it scrolls; the overlay
-        // re-places the popup under its anchor.
-        const float h = _rows->measure(kWidth - 2 * kPad, kInf).h;
-        _scroll->style().height(std::min(h, kMaxListH));
-        _scroll->setVisible(!pins.empty());
-        _message->setVisible(pins.empty());
-        if (pins.empty())
-            _message->setText(tr("No pinned messages here yet."));
-    }
-    // The list failed to load.
-    void showError(const std::string &err) {
-        _scroll->setVisible(false);
-        _message->setVisible(true);
-        _message->setText(i18n::arg(tr("Couldn't load the pinned messages (%1)."), err));
-    }
-
-private:
-    static constexpr float kWidth = 380, kPad = 8, kMaxListH = 360, kMessageH = 56;
-    screens::Context      &_ctx;
-    Avatars               &_avatars;
-    ConvRef                _conv;
-    Label                 *_title = nullptr, *_message = nullptr;
-    ScrollView            *_scroll = nullptr;
-    View                  *_rows   = nullptr;
-};
-
 } // namespace
 
 // ── ConvHeader ──────────────────────────────────────────────────────────────
@@ -385,9 +290,9 @@ std::string huddleJoinUrl(const model::Store &st, ConvRef conv) {
 ConvHeader::ConvHeader(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _avatars(avatars) {
 #ifdef __APPLE__
     // The macOS unified header, which Shell puts in the title bar: the name centred in the window
-    // between a blank column and the actions, both 230 px wide (room for the members button beside
-    // the four icons), over the title bar's bottom rule.
-    constexpr float kActionsW = 230;
+    // between a blank column and the actions, both 200 px wide (room for the members button beside
+    // the three icons), over the title bar's bottom rule.
+    constexpr float kActionsW = 200;
     style().row().margins(0, 0, 0, 1);
     setBackground(C::Surface);
     add<View>()->style().width(kActionsW).noShrink();
@@ -434,12 +339,8 @@ ConvHeader::ConvHeader(screens::Context &ctx, Avatars &avatars) : _ctx(ctx), _av
         if (_conv != kNoConv && _ctx.openUrl)
             _ctx.openUrl(huddleJoinUrl(_ctx.store, _conv));
     };
-    _huddle    = huddle;
-    auto *pins = actions->add<GlyphButton>(Icon::Pin, 28, 15, C::FormIcon, tr("Pinned messages"));
-    pins->style().margins(0, 0, 2, 0);
-    pins->onClick = [this, pins] { openPins(pins->windowRect()); };
-    _pins         = pins;
-    _star         = actions->add<StarButton>();
+    _huddle = huddle;
+    _star   = actions->add<StarButton>();
     _star->style().margins(0, 0, 2, 0);
     _star->onClick = [this] {
         if (_conv != kNoConv)
@@ -486,8 +387,6 @@ void ConvHeader::refresh() {
     _star->setVisible(true);
     _star->setStarred(c.starred);
     _huddle->setVisible(caps.huddles);
-    // Agent sessions have no pins (the message menu offers none either).
-    _pins->setVisible(caps.pinnedList && !_ctx.backend.isAgentSession(_conv));
     // Channels: the members button with conversations.list's count (a large
     // one shortened to "12k" so it fits).
     const bool channel = caps.memberList && !c.isDirect();
@@ -575,30 +474,6 @@ void ConvHeader::openMembers(RectF anchor) {
     );
 }
 
-void ConvHeader::openPins(RectF anchor) {
-    Window *w = window();
-    if (!w || _conv == kNoConv)
-        return;
-    auto  p   = std::make_unique<PinsPopup>(_ctx, _avatars, _conv);
-    auto *raw = p.get();
-    p->setAnchor(anchor, Popup::Place::Below);
-    w->showPopup(std::move(p));
-    // As in openMembers: the token dies with the popup.
-    auto token    = std::make_shared<int>(0);
-    raw->onClosed = [token] {};
-    _ctx.backend.loadPins(
-        _conv,
-        [raw, weak = std::weak_ptr<int>(token)](std::vector<model::Message> pins, std::string err) {
-            if (weak.expired())
-                return;
-            if (pins.empty() && !err.empty())
-                raw->showError(err);
-            else
-                raw->setPins(std::move(pins));
-        }
-    );
-}
-
 // ── ConvTabs ────────────────────────────────────────────────────────────────
 
 namespace {
@@ -657,7 +532,8 @@ ConvTabs::ConvTabs() {
     style().items(Align::Start);
     _tabs[0] = add<Tab>(Icon::MessageCircle, tr("Messages"));
     _tabs[1] = add<Tab>(Icon::StickyNotePlus, tr("Add canvas"));
-    for (int i = 0; i < 2; ++i) {
+    _tabs[2] = add<Tab>(Icon::Pin, tr("Pins"));
+    for (int i = 0; i < kCount; ++i) {
         static_cast<Tab *>(_tabs[i])->fit();
         _tabs[i]->onClick = [this, i] {
             if (i == _active)
@@ -682,9 +558,15 @@ void ConvTabs::setCanvas(bool visible, bool hasCanvas, std::string title) {
         setActive(0); // can't stay on a hidden tab
 }
 
+void ConvTabs::setPins(bool visible) {
+    _tabs[kPins]->setVisible(visible);
+    if (!visible && _active == kPins)
+        setActive(kMessages); // can't stay on a hidden tab
+}
+
 void ConvTabs::setActive(int tab) {
     _active = tab;
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < kCount; ++i)
         static_cast<Tab *>(_tabs[i])->setActive(i == tab);
     update();
 }

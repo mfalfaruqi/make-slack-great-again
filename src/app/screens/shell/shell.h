@@ -38,6 +38,7 @@ namespace shell {
 class CanvasPage;
 class ConvHeader;
 class OverviewPage;
+class PinsPage;
 class TeammatePage;
 class SavedPage;
 class ScheduledPage;
@@ -152,7 +153,11 @@ public:
     void           openSearch();
     MessageSearch *messageSearch() const { return _search; }
     QuickSwitcher *quickSwitcher() const { return _switcher; }
-    void           showCanvas(bool on); // the header's tabs
+    // The header's tabs (ConvTabs::kMessages, kCanvas, kPins): the message
+    // list with the composer, the canvas page, or the pinned messages.
+    void           showTab(int tab);
+    void           showCanvas(bool on); // the canvas tab, or back to Messages
+    PinsPage      &pinsPage() const { return *_pins; }
     void           lookUpCanvas(model::ConvRef conv);
     CanvasPage    &canvasPage() const { return *_canvas; }
     // The profile card; beside `anchor` (window rect of the avatar/name)
@@ -428,6 +433,7 @@ private:
     TypingIndicator              *_typing   = nullptr;
     ui::View                     *_messages = nullptr, *_mainPane = nullptr;
     CanvasPage                   *_canvas   = nullptr;
+    PinsPage                     *_pins     = nullptr;
     ui::View                     *_welcome  = nullptr; // the shortcuts panel (no conversation open)
     ui::View                     *_splitter = nullptr;
     ThreadArea                   *_thread   = nullptr;
