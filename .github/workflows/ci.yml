@@ -1,5 +1,5 @@
-# Build msga and run its test suites on Linux and macOS, and check the
-# formatting. Windows (MSYS2, scripts\build.ps1) is not covered yet.
+# Build msga and run its test suites on Linux, macOS and Windows, and check
+# the formatting.
 name: CI
 
 on:
@@ -77,3 +77,37 @@ jobs:
         run: >
           ctest --test-dir build --output-on-failure --timeout 300
           -j "$(sysctl -n hw.ncpu)" -E '^crash_tests$'
+
+  # MSYS2's mingw64 GCC, the only Windows toolchain msga builds with (MSVC is
+  # not supported). The packages are the ones scripts\msys2.ps1 and
+  # configure-windows.ps1 list; the steps are build.ps1's, run in the MSYS2
+  # shell because the action installs MSYS2 outside C:\msys64.
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      # As committed: the runner's git would otherwise check text files out
+      # with CRLF, and some tests compare files byte for byte.
+      - name: Keep line endings
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-python
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 300 -j "$(nproc)"
