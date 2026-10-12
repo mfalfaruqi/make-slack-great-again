@@ -73,10 +73,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      # CMake and clang come with the runner; FreeType and HarfBuzz are built
-      # by msga's own CMake.
+      # The script is the one list of what a build needs (Homebrew packages);
+      # FreeType and HarfBuzz are built by msga's own CMake.
       - name: Install dependencies
-        run: brew install ninja
+        run: scripts/configure-mac.sh
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_BUILD_TESTS=ON
       - name: Build
