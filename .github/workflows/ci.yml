@@ -48,6 +48,16 @@ jobs:
       # The script is the one list of what a build needs (apt packages).
       - name: Install dependencies
         run: scripts/configure-linux.sh
+      # msga takes the first installed of Inter, Noto Sans, Ubuntu, Cantarell,
+      # DejaVu Sans, Liberation Sans as its UI font (src/text/fonts.cpp). The
+      # runner image only has the last ones, and some tests depend on the
+      # font's shapes and widths (a "1" that leans, a label that fits one
+      # line, where a spelling squiggle lands): Noto Sans, as on a stock
+      # Ubuntu desktop.
+      - name: Install the UI font
+        run: |
+          sudo apt-get install -y fonts-noto-core
+          fc-list : family | grep -iE 'inter|noto sans$|ubuntu|cantarell|dejavu sans$|liberation sans$' | sort -u
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_BUILD_TESTS=ON
       - name: Build

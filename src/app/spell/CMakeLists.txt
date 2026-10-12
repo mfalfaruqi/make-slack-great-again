@@ -21,6 +21,12 @@ if(APPLE)
     target_link_libraries(msga_app_spell PRIVATE "-framework AppKit")
 elseif(WIN32)
     target_sources(msga_app_spell PRIVATE backend_win.cpp)
+    # mingw-w64's spellcheck.h declares the interfaces only for Windows 8 and
+    # later (NTDDI_VERSION >= NTDDI_WIN8); below that it leaves forward
+    # declarations, and backend_win.cpp does not compile (as on the CI
+    # runner's MSYS2). So name the target plat builds for here too.
+    set_source_files_properties(backend_win.cpp PROPERTIES
+        COMPILE_DEFINITIONS "_WIN32_WINNT=0x0A00;WINVER=0x0A00")
     target_link_libraries(msga_app_spell PRIVATE ole32)
 else()
     # Only this branch compiles Hunspell; size-optimised because spell() takes about a
