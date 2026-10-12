@@ -2606,6 +2606,47 @@ void SlackBackend::loadMessage(ConvRef conv, Ts ts, MessageDone done) {
     );
 }
 
+// pins.list answers with every pinned item of the conversation, the latest
+// pin first, each message whole. A pinned file has no message of its own and
+// is left out. An app token needs pins:read (OAuthFlow::userScopes): one
+// issued before that fails with missing_scope until the next sign-in.
+void SlackBackend::loadPins(ConvRef conv, PinsDone done) {
+    Read              *r  = _read;
+    const std::string &id = convId(conv);
+    if (id.empty()) {
+        r->later(0, [done = std::move(done)] {
+            if (done)
+                done({}, {});
+        });
+        return;
+    }
+    r->call(
+        "pins.list",
+        net::formEncode({{"channel", id}}),
+        [r, done = std::move(done)](const json::Document &doc, const std::string &err) {
+            if (err == "cancelled")
+                return;
+            std::vector<model::Message> pins;
+            if (!err.empty())
+                LOG_WARN("slack", "pins.list: %s", err.c_str());
+            else
+                for (const json::Value item : doc.root()["items"]) {
+                    const json::Value v = item["message"];
+                    if (v["ts"].str().empty())
+                        continue;
+                    model::Message m = mapjson::toMessage(v, r->s);
+                    m.pinned         = true;
+                    if (const std::string_view by = item["created_by"].str();
+                        m.pinnedBy == model::kNoUser && !by.empty())
+                        m.pinnedBy = r->s.internUser(by);
+                    pins.push_back(std::move(m));
+                }
+            if (done)
+                done(std::move(pins), err);
+        }
+    );
+}
+
 // ── Watched threads ─────────────────────────────────────────────────────────
 
 // conversations.replies from `after` (exclusive) on; the root comes back on
@@ -3075,6 +3116,7 @@ model::Backend::Capabilities SlackBackend::capabilities() const {
     c.replyBroadcast   = true;
     c.scheduledSend    = true;                 // chat.scheduleMessage
     c.memberList       = true;                 // conversations.members
+    c.pinnedList       = true;                 // pins.list
     c.threadsView      = _creds.sessionAuth(); // subscriptions.thread.getView: xoxc only
     c.messageReminders = _creds.sessionAuth(); // saved.*: xoxc only
     c.presence         = true;                 // polled users.getPresence

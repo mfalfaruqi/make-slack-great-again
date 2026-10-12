@@ -95,6 +95,11 @@ struct Fake : fake::FakeBackend {
             return fake::FakeBackend::loadMembers(conv, std::move(done));
         done({}, membersError);
     }
+    void loadPins(ConvRef conv, PinsDone done) override {
+        if (pinsError.empty())
+            return fake::FakeBackend::loadPins(conv, std::move(done));
+        done({}, pinsError);
+    }
     void sendBlocks(
         ConvRef conv, std::string text, std::string blocks, Ts thread, bool bc, Done done
     ) override {
@@ -123,7 +128,7 @@ struct Fake : fake::FakeBackend {
     bool        broadcast = false, huddles = false, schedule = false, gifs = true;
     int         broadcasts = 0;
     ConvRef     suggestFor = kNoConv;
-    std::string membersError, lastBlocks;
+    std::string membersError, pinsError, lastBlocks;
     std::string scheduleError; // scheduleMessage fails with it
     void        refreshScheduled() override { ++scheduledRefreshes; }
     void        cancelScheduled(const std::string &id, Done done) override {
@@ -719,6 +724,84 @@ TEST("header: the members popup says why the list couldn't load") {
     ui::Popup *p = h.win->topPopup();
     REQUIRE(p != nullptr);
     REQUIRE(until([&] { return hasText(p, "Couldn't load the members (ratelimited)."); }));
+}
+
+namespace {
+ui::View *findText(ui::View *v, std::string_view s) {
+    if (v->accessibleName() == s)
+        return v;
+    for (size_t i = 0; i < v->childCount(); ++i)
+        if (ui::View *f = findText(v->child(i), s))
+            return f;
+    return nullptr;
+}
+} // namespace
+
+TEST("header: the pin button lists the conversation's pinned messages; a click jumps to one") {
+    Harness h;
+    auto   &hd      = h.sh->header();
+    ConvRef general = h.conv("C0GENERAL");
+    h.sh->open(general);
+    pump();
+    REQUIRE(hd.pins()->visible());
+    CHECK_STR(hd.pins()->tooltip(), "Pinned messages");
+    REQUIRE(hd.pins()->onClick != nullptr);
+    hd.pins()->onClick();
+    pump();
+    ui::Popup *p = h.win->topPopup();
+    REQUIRE(p != nullptr);
+    REQUIRE(until([&] { return hasText(p, "1 pinned message"); }));
+    ui::View *who = findText(p, "Sam Rivera");
+    REQUIRE(who != nullptr);
+    // The jump the shell is asked for: the message, in the channel.
+    ConvRef jumpConv = kNoConv;
+    Ts      jumpTs = 0, jumpThread = 1;
+    h.ctx.openMessage = [&](ConvRef c, Ts ts, Ts thread) {
+        jumpConv   = c;
+        jumpTs     = ts;
+        jumpThread = thread;
+    };
+    auto           *hk = app().platform().testHooks();
+    const ui::RectF r  = who->windowRect();
+    hk->injectPointerMove(h.win->native(), {r.x + 4.0, r.y + r.h / 2.0});
+    hk->injectButton(h.win->native(), plat::Button::Left, true);
+    hk->injectButton(h.win->native(), plat::Button::Left, false);
+    REQUIRE(until([&] { return jumpConv == general; }));
+    const model::Message *m = h.store.findMessage(general, jumpTs);
+    REQUIRE(m != nullptr);
+    CHECK(m->pinned);
+    CHECK(jumpThread == 0);
+    CHECK(h.win->topPopup() == nullptr);
+}
+
+TEST("header: the pins popup follows a new pin, and says so when there are none") {
+    Harness h; // #design: nothing pinned
+    auto   &hd = h.sh->header();
+    hd.openPins({900, 40, 28, 28});
+    pump();
+    REQUIRE(h.win->topPopup() != nullptr);
+    REQUIRE(until([&] { return hasText(h.win->topPopup(), "No pinned messages here yet."); }));
+    h.win->topPopup()->close();
+    pump();
+    const auto &msgs = h.store.conversation(h.sh->current()).messages;
+    REQUIRE(msgs.size() >= 2);
+    h.backend.setPinned(h.sh->current(), msgs[0].ts, true);
+    h.backend.setPinned(h.sh->current(), msgs[1].ts, true);
+    hd.openPins({900, 40, 28, 28});
+    pump();
+    REQUIRE(until([&] { return hasText(h.win->topPopup(), "2 pinned messages"); }));
+}
+
+TEST("header: the pins popup says why the list couldn't load") {
+    Harness h;
+    h.backend.pinsError = "missing_scope";
+    h.sh->header().openPins({900, 40, 28, 28});
+    pump();
+    ui::Popup *p = h.win->topPopup();
+    REQUIRE(p != nullptr);
+    REQUIRE(until([&] {
+        return hasText(p, "Couldn't load the pinned messages (missing_scope).");
+    }));
 }
 
 TEST("header: the members popup grows to its list when the count was unknown") {

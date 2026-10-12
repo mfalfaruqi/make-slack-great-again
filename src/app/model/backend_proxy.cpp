@@ -156,6 +156,9 @@ void BackendProxy::cancelScheduled(const std::string &id, Done d) {
 void BackendProxy::loadMembers(ConvRef c, MembersDone done) {
     _t->loadMembers(c, std::move(done));
 }
+void BackendProxy::loadPins(ConvRef c, PinsDone done) {
+    _t->loadPins(c, std::move(done));
+}
 bool BackendProxy::gifSearchAvailable() const {
     return _t->gifSearchAvailable();
 }

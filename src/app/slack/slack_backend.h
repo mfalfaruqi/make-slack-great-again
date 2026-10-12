@@ -80,6 +80,7 @@ public:
     // The Threads page: subscriptions.thread.getView (session tokens only).
     void         loadThreadsView(std::string cursor, ThreadsViewDone done) override;
     void         loadMessage(model::ConvRef conv, model::Ts ts, MessageDone done) override;
+    void         loadPins(model::ConvRef conv, PinsDone done) override;
     void         resolveChannel(const std::string &id) override;
     bool         threadFollowed(model::ConvRef conv, model::Ts root) const override;
     void         resolveUser(model::UserRef u) override;

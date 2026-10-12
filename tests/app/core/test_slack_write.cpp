@@ -863,6 +863,50 @@ TEST("slack write: status, profile and photo") {
     );
 }
 
+TEST("slack write: loadPins lists pins.list's messages, files left out, the error passed on") {
+    if (!haveServer())
+        return;
+    Env e;
+    script(
+        "pins.list",
+        R"([{"ok":true,"items":[
+            {"type":"message","created_by":"UMIRA","message":{"type":"message","user":"UME",
+             "text":"newer pin","ts":"1700000500.000100","pinned_to":["C1"]}},
+            {"type":"file","file":{"id":"F1"}},
+            {"type":"message","created_by":"UME","message":{"type":"message","user":"UMIRA",
+             "text":"a pinned reply","ts":"1700000200.000100","thread_ts":"1700000100.000100"}}
+           ]},
+           {"ok":false,"error":"missing_scope"}])"
+    );
+    std::vector<model::Message> pins;
+    std::string                 error;
+    int                         answers = 0;
+    const auto                  done    = [&](std::vector<model::Message> p, std::string err) {
+        pins  = std::move(p);
+        error = std::move(err);
+        ++answers;
+    };
+    e.be->loadPins(e.general, done);
+    REQUIRE(pumpUntil([&] { return answers == 1; }));
+    CHECK(error.empty());
+    REQUIRE(pins.size() == 2); // the file is no message
+    CHECK_STR(pins[0].text, "newer pin");
+    CHECK(pins[0].pinned);
+    CHECK(pins[0].pinnedBy == e.mira); // the item's created_by
+    CHECK(pins[1].isReply());
+    CHECK(pins[1].threadTs == model::parseTs("1700000100.000100"));
+    CHECK(pins[1].pinned); // whatever the message itself says
+    // Copies: the Store's history is as it was.
+    CHECK(e.store.findMessage(e.general, pins[0].ts) == nullptr);
+    Log log;
+    CHECK_STR(log.get("pins.list")["form"]["channel"].str(), "C1");
+
+    e.be->loadPins(e.general, done);
+    REQUIRE(pumpUntil([&] { return answers == 2; }));
+    CHECK(pins.empty());
+    CHECK_STR(error, "missing_scope");
+}
+
 TEST("slack write: presence — away or auto, then the re-polled snapshot answers") {
     if (!haveServer())
         return;

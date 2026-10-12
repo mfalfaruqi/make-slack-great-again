@@ -124,6 +124,7 @@ Scroll down to **User Token Scopes** and add the following:
 | `mpim:history` | Read group direct messages |
 | `mpim:read` | List group direct message conversations |
 | `mpim:write` | Create group DM conversations |
+| `pins:read` | List a conversation's pinned messages |
 | `pins:write` | Pin/unpin messages |
 | `reactions:read` | Read emoji reactions |
 | `reactions:write` | Add/remove reactions |

@@ -78,6 +78,7 @@ public:
     void         setPresence(bool away, Done done) override;
     void         setStatus(std::string emoji, std::string text, int64_t expiry, Done done) override;
     void         loadMembers(model::ConvRef conv, MembersDone done) override;
+    void         loadPins(model::ConvRef conv, PinsDone done) override;
     // My profile round-trips through the Store (the phone is kept here).
     void         loadMyProfile(std::function<void(MyProfile)> done) override;
     void updateProfile(std::string name, std::string email, std::string phone, Done done) override;

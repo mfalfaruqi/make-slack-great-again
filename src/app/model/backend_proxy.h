@@ -117,6 +117,7 @@ public:
     void        refreshScheduled() override;
     void        cancelScheduled(const std::string &id, Done d) override;
     void        loadMembers(ConvRef c, MembersDone done) override;
+    void        loadPins(ConvRef c, PinsDone done) override;
     bool        gifSearchAvailable() const override;
     void        searchGifs(std::string query, std::function<void(std::vector<Gif>)> done) override;
     std::string promptSuggestion(ConvRef c) const override;

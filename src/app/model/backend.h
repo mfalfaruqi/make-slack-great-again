@@ -339,6 +339,7 @@ public:
         bool replyBroadcast   = false; // "Also send to channel" under the thread composer
         bool scheduledSend    = false; // the composer's schedule-send chevron
         bool memberList       = false; // the header's members button opens the list
+        bool pinnedList       = false; // the header's pin button lists the pins (loadPins)
         bool threadsView      = false; // the sidebar's "Threads" entry
         bool messageReminders = false; // "Saved messages" (while something is saved)
         bool presence         = true;  // presence dots, the footer's presence toggle
@@ -475,6 +476,14 @@ public:
         if (done)
             done({}, {});
     }
+    // A conversation's pinned messages, as copies: every one, whatever
+    // history is loaded (the header's "Pinned messages" list); `error` is the
+    // service's reason when the list couldn't be loaded.
+    // Default, for backends whose Store holds everything: the Store's pinned
+    // messages, top-level and in loaded threads, newest first, answered at
+    // once.
+    using PinsDone = std::function<void(std::vector<Message> pins, std::string error)>;
+    virtual void loadPins(ConvRef conv, PinsDone done);
     // A GIF search service of the backend's own (the demo's stand-in GIPHY);
     // without one the composer's picker asks for a GIPHY key. An empty query
     // is "trending".

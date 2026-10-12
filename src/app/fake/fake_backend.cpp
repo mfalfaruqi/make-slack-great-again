@@ -356,6 +356,7 @@ void FakeBackend::deleteFile(ConvRef conv, Ts ts, const std::string &fileId) {
 FakeBackend::Capabilities FakeBackend::capabilities() const {
     Capabilities c;
     c.memberList       = true;
+    c.pinnedList       = true;
     c.threadsView      = true;
     c.messageReminders = true;
     c.canvases         = true;
@@ -382,6 +383,13 @@ void FakeBackend::setStatus(std::string emoji, std::string text, int64_t, Done d
         }
         if (done)
             done(true, {});
+    });
+}
+
+// The whole fixture is in the Store: its pinned messages, a round trip later.
+void FakeBackend::loadPins(ConvRef conv, PinsDone done) {
+    later(kReadLatencyMs, [this, conv, done = std::move(done)] {
+        model::Backend::loadPins(conv, done);
     });
 }
 

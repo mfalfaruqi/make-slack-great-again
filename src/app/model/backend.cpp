@@ -1,5 +1,7 @@
 #include "app/model/backend.h"
 
+#include <algorithm>
+
 namespace model {
 
 // The defaults of the calls a backend may lack (see the header).
@@ -19,6 +21,24 @@ void Backend::openDm(UserRef, std::function<void(ConvRef)> done) {
 }
 
 void Backend::setPinned(ConvRef, Ts, bool) {}
+void Backend::loadPins(ConvRef conv, PinsDone done) {
+    std::vector<Message> pins;
+    if (conv < _store.conversationCount()) {
+        const Conversation &c = _store.conversation(conv);
+        for (const Message &m : c.messages)
+            if (m.pinned)
+                pins.push_back(m.clone());
+        for (const Thread &t : c.threads)
+            for (const Message &m : t.replies)
+                if (m.pinned)
+                    pins.push_back(m.clone());
+        sortByTs(pins);
+        std::reverse(pins.begin(), pins.end());
+    }
+    if (done)
+        done(std::move(pins), {});
+}
+
 void Backend::setSaved(ConvRef, Ts, bool) {}
 void Backend::deleteFile(ConvRef, Ts, const std::string &) {}
 void Backend::setReminder(ConvRef, Ts, int64_t) {}
