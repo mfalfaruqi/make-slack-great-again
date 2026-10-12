@@ -36,7 +36,11 @@ constexpr float kAvSize = 36, kAvGap = 10, kHdrH = 20, kReactGap = 6;
 constexpr float kThreadAv = 24, kImgMax = 360, kAttachBar = 4;
 // Inline images at most 400 × 300.
 constexpr int   kImgMaxW = 400, kImgMaxH = 300;
-constexpr float kBannerH = 18; // the mini-banner rows
+constexpr float kBannerH       = 18; // the mini-banner rows
+// Pins mode: each message in a bordered card of its own, kBubbleGap under
+// the one above, kBubbleMarginH in from the list's sides, the row's usual
+// padding inside it.
+constexpr float kBubbleMarginH = 16, kBubbleGap = 8, kBubbleRadius = 8, kBubblePadV = 12;
 
 // Pinned background, dismiss icon, reminder background, reminder text.
 constexpr C kBannerColors[4] = {C::PinnedBg, C::FormIcon, C::ReminderBg, C::FormLink};
@@ -1200,9 +1204,15 @@ void MessageRow::buildHeader(ui::View *col, const model::Message &m, bool tight)
         addTagBadge(hdr, false)->style().margins(6, 0, 0, 0);
     if (m.user != model::kNoUser && st.user(m.user).stranger)
         addTagBadge(hdr, true)->style().margins(6, 0, 0, 0);
-    hdr->add<ui::Label>(base::formatTime(model::tsSecs(m.ts)), Font::Small, C::TextFaint)
-        ->style()
-        .margins(8, 0, 0, 0);
+    // Pins mode has no day dividers: the day goes with the time ("Today at
+    // 3:38 PM", "March 15 at 4:10 PM").
+    std::string time = base::formatTime(model::tsSecs(m.ts));
+    if (_list.pinsMode()) {
+        time = base::lastReplyLabel(model::tsSecs(m.ts), ctx.backend.nowSecs());
+        if (!time.empty() && time[0] >= 'a' && time[0] <= 'z')
+            time[0] = char(time[0] - 'a' + 'A');
+    }
+    hdr->add<ui::Label>(std::move(time), Font::Small, C::TextFaint)->style().margins(8, 0, 0, 0);
 }
 
 void MessageRow::applyBanners(const model::Message &m, bool grouped) {
@@ -1210,8 +1220,24 @@ void MessageRow::applyBanners(const model::Message &m, bool grouped) {
     // The banners stack above the message, before its padding.
     _pinText.clear();
     _savedText.clear();
-    // Not in the Pins tab's list: every message there is pinned.
-    if (m.pinned && !_list.pinsMode())
+    // Pins mode: no strips over the message (every one is pinned), and the
+    // row is its card (paint): a click anywhere on it goes to the message.
+    if (_list.pinsMode()) {
+        _reminded = false;
+        setCursor(plat::Cursor::Hand);
+        style()
+            .row()
+            .padding(
+                kBubbleMarginH + kPadH,
+                kBubbleGap + kBubblePadV,
+                kBubbleMarginH + kPadH,
+                kBubblePadV
+            )
+            .spacing(kAvGap)
+            .items(Align::Start);
+        return;
+    }
+    if (m.pinned)
         _pinText = m.pinnedBy != model::kNoUser
                        ? arg(tr("Pinned by %1"), st.user(m.pinnedBy).label())
                        : std::string(tr("Pinned"));
@@ -1256,6 +1282,10 @@ void MessageRow::buildMessage(const model::Message &m, bool grouped) {
     _col = col;
     rememberBody(m);
     buildTail(col, m);
+    // Pins mode: the row's hand over the text too (a click goes to the message).
+    if (_list.pinsMode())
+        for (SelectableText *l : _sel)
+            l->setSelectable(false);
 }
 
 void MessageRow::buildTail(ui::View *col, const model::Message &m) {
@@ -1847,6 +1877,16 @@ void MessageRow::paint(gfx::Painter &p) {
     // Pending sends: everything in the row (children included) at half alpha.
     if (_pending)
         p.setOpacity(0.5f);
+    if (_list.pinsMode()) {
+        // The message's card; the hover fill stays inside it.
+        const ui::RectF card{
+            kBubbleMarginH, kBubbleGap, width() - 2 * kBubbleMarginH, height() - kBubbleGap
+        };
+        if (hovered() || _list.toolbarRow() == this)
+            p.fillRoundRect(card, kBubbleRadius, ui::color(C::SurfaceHover));
+        p.strokeRoundRect(card, kBubbleRadius, 1, ui::color(C::Border));
+        return;
+    }
     if (_reminded) // a reminder tints the whole row
         p.fillRect(bounds(), bannerColor(2));
     if (_list.flashing(_ts))
@@ -1958,7 +1998,7 @@ bool MessageRow::onEvent(ui::Event &e) {
         }
         if (over != _overDismiss) {
             _overDismiss = over;
-            setCursor(over ? plat::Cursor::Hand : plat::Cursor(kCursorInherit));
+            setCursor(over || _list.pinsMode() ? plat::Cursor::Hand : plat::Cursor(kCursorInherit));
             if (window())
                 window()->rearmTooltip();
         }

@@ -22,6 +22,9 @@ PinsPage::PinsPage(screens::Context &ctx) : _ctx(ctx) {
     _status->setAlign(text::LayoutOptions::Align::Center);
     _status->style().padding(48, 48, 48, 24);
     _status->setVisible(false);
+    _heading = add<Label>(tr("Pinned messages"), Font::BodyBold, C::TextMuted);
+    _heading->style().padding(16, 16, 16, 4);
+    _heading->setVisible(false);
 #ifdef MSGA_HAVE_MESSAGES
     _messages = add<screens::MessageList>(_ctx);
     _messages->style().flex(1);
@@ -100,6 +103,7 @@ void PinsPage::clear() {
     _messages->clear();
     _messages->setVisible(false);
 #endif
+    _heading->setVisible(false);
     setStatus({});
 }
 
@@ -125,6 +129,7 @@ void PinsPage::load() {
 }
 
 void PinsPage::show() {
+    _heading->setVisible(!_pins.empty());
 #ifdef MSGA_HAVE_MESSAGES
     _messages->setVisible(!_pins.empty());
     if (_pins.empty()) {

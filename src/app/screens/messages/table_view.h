@@ -87,7 +87,7 @@ public:
     ~TableView() override;
 
     // Message text the list selects across (tableText): the I-beam over it.
-    void setSelectable(bool on) { _selectable = on; }
+    void setSelectable(bool on) override { _selectable = on; }
 
     ui::View &textView() override { return *this; }
     uint32_t  textSize() const override { return _textSize; }

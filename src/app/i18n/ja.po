@@ -2833,6 +2833,10 @@ msgid "No results found."
 msgstr "結果が見つかりませんでした。"
 
 #: src/app/screens/shell/pins_page.cpp
+msgid "Pinned messages"
+msgstr "ピン留めされたメッセージ"
+
+#: src/app/screens/shell/pins_page.cpp
 msgid "Loading pinned messages…"
 msgstr "ピン留めされたメッセージを読み込み中…"
 
@@ -3931,9 +3935,6 @@ msgstr "ダウンロードした更新ファイルが破損しています（チ
 
 #~ msgid "Unpin"
 #~ msgstr "ピン留めを解除"
-
-#~ msgid "Pinned messages"
-#~ msgstr "ピン留めされたメッセージ"
 
 #~ msgid "%n pinned message"
 #~ msgid_plural "%n pinned messages"

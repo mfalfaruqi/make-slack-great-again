@@ -73,9 +73,11 @@ public:
     void    showConversation(ConvRef conv);
     // Thread mode (the thread panel): the root, a "N replies" divider, the replies.
     void    showThread(ConvRef conv, Ts root);
-    // Pins mode (the Pins tab): just these messages of `conv`, oldest first
-    // under their day dividers, each a full row of its own (never grouped
-    // with a neighbour), read from the top. A message the Store holds is the
+    // Pins mode (the Pins tab): just these messages of `conv`, oldest first,
+    // each a full row of its own in a bordered card (never grouped with a
+    // neighbour, no day dividers: the time beside the name carries the day,
+    // "Today at 3:38 PM"), without the "Pinned" strip, read from the top. A
+    // click on a row is onGoTo. A message the Store holds is the
     // Store's (so reactions, edits and its menu work as in the conversation);
     // one it doesn't hold is drawn from the copy given here. No history is
     // loaded and nothing is marked read. Called again for the same

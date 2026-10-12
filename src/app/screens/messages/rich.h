@@ -35,6 +35,8 @@ public:
     // (a table's row) under a point. [*from, *to).
     virtual void      wordAt(uint32_t offset, uint32_t *from, uint32_t *to) const  = 0;
     virtual void      lineAt(ui::PointF local, uint32_t *from, uint32_t *to) const = 0;
+    // The I-beam over its text (off: the cursor of what it sits in).
+    virtual void      setSelectable(bool on)                                       = 0;
 
 protected:
     ~SelectableText() = default;
@@ -60,7 +62,7 @@ public:
     const Target *targetAt(ui::PointF local) const;
 
     // Message text the list selects across: the I-beam over plain text.
-    void setSelectable(bool on) { _selectable = on; }
+    void setSelectable(bool on) override { _selectable = on; }
     bool selectable() const { return _selectable; }
 
     ui::View &textView() override { return *this; }

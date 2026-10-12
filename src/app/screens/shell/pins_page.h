@@ -1,11 +1,12 @@
 // The conversation's "Pins" tab: its pinned messages in the message area's
 // place, drawn by a MessageList in pins mode — so each looks and behaves as
 // it does in the Messages tab (text, files and pictures, link previews,
-// reactions, the reply bar, the hover toolbar and the message menu), oldest
-// first under day dividers, without the "Pinned" strip (everything here is
-// pinned). A click on a message, or the menu's first item "Go to message",
-// opens it in the Messages tab (inside its thread for a reply); "Unpin from
-// channel" takes it off the list.
+// reactions, the reply bar, the hover toolbar and the message menu), under
+// the heading "Pinned messages": oldest first, each in a card of its own with
+// its day and time beside the name, without day dividers or the "Pinned"
+// strip (everything here is pinned). A click on a message, or the menu's first item "Go to
+// message", opens it in the Messages tab (inside its thread for a reply); "Unpin from channel"
+// takes it off the list.
 //
 // The list is the service's (Backend::loadPins), so it holds the pins the
 // loaded history doesn't; it is asked for on every open and again when a
@@ -64,6 +65,7 @@ private:
 
     screens::Context           &_ctx;
     ui::Label                  *_status   = nullptr;
+    ui::Label                  *_heading  = nullptr; // "Pinned messages", over the list
     screens::MessageList       *_messages = nullptr;
     std::vector<model::Message> _pins; // oldest first
     std::string                 _statusText;

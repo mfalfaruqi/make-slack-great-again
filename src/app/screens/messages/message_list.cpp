@@ -881,7 +881,7 @@ void MessageList::rebuild(bool notify) {
             run.reserve(_pinned.size());
             for (const model::Message &p : _pinned)
                 run.push_back(message(p.ts));
-            addRun(run, true);
+            addRun(run, false); // no day dividers: each row's time names its day
         } else if (_root == 0) {
             addRun(c.messages, true);
         } else if (_loadingThread) {

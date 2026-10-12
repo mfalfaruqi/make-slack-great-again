@@ -749,16 +749,23 @@ TEST("tabs: Pins shows the pinned messages as the Messages tab does; Go to messa
     CHECK(page.statusText().empty());
     CHECK_STR(page.author(0), "Sam Rivera");
 #ifdef MSGA_HAVE_MESSAGES
-    // A message list of its own, in pins mode: the day, then the message as
-    // a full row, with the message menu led by "Go to message".
+    // A message list of its own, in pins mode, under the heading: the
+    // message as a full row (no day divider), with the message menu led by
+    // "Go to message".
     screens::MessageList *list = page.list();
     REQUIRE(list != nullptr);
     CHECK(list->visible());
     CHECK(list->pinsMode());
-    REQUIRE(list->items().size() == 2);
-    CHECK(list->items()[0].kind == screens::MessageList::ItemKind::Day);
-    CHECK(list->items()[1].ts == page.ts(0));
-    CHECK_FALSE(list->items()[1].grouped);
+    CHECK(hasText(&page, "Pinned messages"));
+    REQUIRE(list->items().size() == 1);
+    CHECK(list->items()[0].kind == screens::MessageList::ItemKind::Message);
+    CHECK(list->items()[0].ts == page.ts(0));
+    CHECK_FALSE(list->items()[0].grouped);
+    // The row: a hand over it, and its day beside the time (four days back).
+    ui::View *first = list->list().viewFor(0);
+    REQUIRE(first != nullptr);
+    CHECK(first->cursorAt({200, 30}) == uint8_t(plat::Cursor::Hand));
+    CHECK(hasText(first, "September 17 at 9:02 AM"));
     const auto menu = list->menuItems(page.ts(0));
     REQUIRE(!menu.empty());
     CHECK(menu[0].id == screens::MessageList::kGoTo);
@@ -778,14 +785,14 @@ TEST("tabs: Pins shows the pinned messages as the Messages tab does; Go to messa
     h.sh->showTab(shell::ConvTabs::kPins);
     REQUIRE(until([&] { return page.count() == 1 && list->visible(); }));
     pump();
-    ui::View *row = list->list().viewFor(1);
+    ui::View *row = list->list().viewFor(0);
     REQUIRE(row != nullptr);
     const ui::RectF r  = row->windowRect();
     auto           *hk = app().platform().testHooks();
     for (const double x : {r.x + r.w - 40.0, r.x + 120.0}) { // off the text, then on it
         if (tabs.active() != shell::ConvTabs::kPins) {
             h.sh->showTab(shell::ConvTabs::kPins);
-            REQUIRE(until([&] { return list->visible() && list->list().viewFor(1) != nullptr; }));
+            REQUIRE(until([&] { return list->visible() && list->list().viewFor(0) != nullptr; }));
             pump();
         }
         hk->injectPointerMove(h.win->native(), {x, r.y + r.h - 12.0});
