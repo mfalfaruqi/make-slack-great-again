@@ -1,5 +1,4 @@
-# Build msga and run its test suites on Linux, macOS and Windows, and check
-# the formatting.
+# Build and test on Linux, macOS and Windows, and check the formatting.
 name: CI
 
 on:
@@ -7,10 +6,8 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
-  # release.yml runs all of this on a version tag before it builds a release.
-  workflow_call:
+  workflow_call: # release.yml
 
-# A newer push to the same branch or pull request replaces the run in flight.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -19,16 +16,13 @@ permissions:
   contents: read
 
 jobs:
-  # The tree is formatted with clang-format 22: other majors give different
-  # output from the same .clang-format (scripts/clang-format-env.sh), so the
-  # version is pinned here. .clang-format-ignore leaves out the vendored and
-  # generated files.
   format:
     name: Format
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      # Pinned: other major versions format the same config differently.
       - name: Install clang-format 22
         run: pipx install 'clang-format==22.*'
       - name: Check formatting
@@ -42,32 +36,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      # The toolchain the releases ship with.
       CC: clang
       CXX: clang++
     steps:
       - uses: actions/checkout@v4
-      # The script is the one list of what a build needs (apt packages).
       - name: Install dependencies
         run: scripts/configure-linux.sh
-      # msga takes the first installed of Inter, Noto Sans, Ubuntu, Cantarell,
-      # DejaVu Sans, Liberation Sans as its UI font (src/text/fonts.cpp). The
-      # runner image only has the last ones, and some tests depend on the
-      # font's shapes and widths (a "1" that leans, a label that fits one
-      # line, where a spelling squiggle lands): Noto Sans, as on a stock
-      # Ubuntu desktop.
+      # Some tests depend on the UI font's shapes and widths; the runner
+      # image only has DejaVu Sans, which they fail with.
       - name: Install the UI font
-        run: |
-          sudo apt-get install -y fonts-noto-core
-          fc-list : family | grep -iE 'inter|noto sans$|ubuntu|cantarell|dejavu sans$|liberation sans$' | sort -u
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_BUILD_TESTS=ON
-      - name: Build
-        run: cmake --build build --parallel
-      # The suites run on plat's headless backend: no display needed. A test
-      # that hangs fails after five minutes instead of holding the job.
-      - name: Test
-        run: ctest --test-dir build --output-on-failure --timeout 300 -j "$(nproc)"
+        run: sudo apt-get install -y fonts-noto-core
+      - name: Build and test
+        env:
+          CTEST_ARGS: --timeout 300
+        run: scripts/build.sh --test
 
   macos:
     name: macOS
@@ -75,40 +57,26 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      # The script is the one list of what a build needs (Homebrew packages);
-      # FreeType and HarfBuzz are built by msga's own CMake.
       - name: Install dependencies
         run: scripts/configure-mac.sh
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_BUILD_TESTS=ON
-      - name: Build
-        run: cmake --build build --parallel
-      # Without crash_tests: on a developer Mac it hangs (its child process
-      # never finishes crashing). Take the -E away once that is understood.
-      - name: Test
-        run: >
-          ctest --test-dir build --output-on-failure --timeout 300
-          -j "$(sysctl -n hw.ncpu)" -E '^crash_tests$'
+      # crash_tests hangs on macOS (not yet understood).
+      - name: Build and test
+        env:
+          CTEST_ARGS: --timeout 300 -E ^crash_tests$
+        run: scripts/build.sh --test
 
-  # MSYS2's mingw64 GCC, the only Windows toolchain msga builds with (MSVC is
-  # not supported). The packages are the ones scripts\msys2.ps1 and
-  # configure-windows.ps1 list; the steps are build.ps1's, run in the MSYS2
-  # shell because the action installs MSYS2 outside C:\msys64.
   windows:
     name: Windows
     runs-on: windows-latest
     timeout-minutes: 60
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
-      # As committed: the runner's git would otherwise check text files out
-      # with CRLF, and some tests compare files byte for byte.
+      # Some tests compare files byte for byte: no CRLF conversion.
       - name: Keep line endings
         shell: bash
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
+        id: msys2
         with:
           msystem: MINGW64
           update: true
@@ -117,9 +85,10 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-python
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_BUILD_TESTS=ON
-      - name: Build
-        run: cmake --build build --parallel
-      - name: Test
-        run: ctest --test-dir build --output-on-failure --timeout 300 -j "$(nproc)"
+      - name: Build and test
+        shell: pwsh
+        env:
+          # The action installs MSYS2 outside C:\msys64.
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+          CTEST_ARGS: --timeout 300
+        run: scripts\build.ps1 --test

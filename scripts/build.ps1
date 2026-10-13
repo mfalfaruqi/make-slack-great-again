@@ -6,6 +6,8 @@
 #   scripts\build.ps1 --test    # also build and run the test suite (combines with --debug)
 #   scripts\build.ps1 --demo    # also compile the demo workspace (msga --demo demo)
 # --test and --demo switch the option on in that build dir; it stays on there.
+# CTEST_ARGS (environment): more arguments for --test's ctest, split at spaces
+# (the CI workflow's per-test timeout), e.g. $env:CTEST_ARGS = '--timeout 300'.
 # Needs MSYS2 (C:\msys64, or set MSYS2_ROOT) with the packages msys2.ps1 lists.
 
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -52,7 +54,9 @@ cmake --build $BuildDir --parallel $Nproc
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($Test) {
-    ctest --test-dir $BuildDir --output-on-failure -j $Nproc
+    $CtestExtra = @()
+    if ($env:CTEST_ARGS) { $CtestExtra = @($env:CTEST_ARGS -split '\s+' | Where-Object { $_ }) }
+    ctest --test-dir $BuildDir --output-on-failure -j $Nproc @CtestExtra
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

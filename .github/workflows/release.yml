@@ -1,10 +1,5 @@
-# A release from a version tag: pushing "v41" runs the whole of CI on that
-# commit (ci.yml: the formatting check and the test suites of the three
-# platforms), builds the release binaries once that has passed, and puts
-# them on a draft GitHub Release for the tag, with notes generated from the
-# pull requests merged since the last one. The draft is not public: look it
-# over on the Releases page, then publish it there.
-#
+# Pushing a version tag runs CI, builds the release binaries and attaches
+# them to a draft GitHub Release (publish it from the Releases page):
 #   git tag v41 && git push origin v41
 name: Release
 
@@ -20,7 +15,6 @@ jobs:
     name: CI
     uses: ./.github/workflows/ci.yml
 
-  # The release binaries, under the names the release carries.
   linux:
     name: Linux
     needs: ci
@@ -33,9 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: scripts/configure-linux.sh
-      # Linked against this runner's libraries (Ubuntu 24.04), so not the
-      # static binary upstream ships. In a tarball: an artifact does not keep
-      # the executable bit.
+      # In a tarball: an artifact does not keep the executable bit.
       - name: Build
         run: |
           scripts/release.sh
@@ -56,10 +48,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: scripts/configure-mac.sh
-      # Stripped and ad-hoc signed (not notarized: a downloaded copy has to be
-      # let through Gatekeeper). Zipped without extended attributes: their
-      # "._" side files would break the signature for anyone who unpacks with
-      # unzip.
+      # Without extended attributes: their "._" files break the signature
+      # when the zip is unpacked with unzip.
       - name: Build
         run: |
           scripts/release.sh
@@ -76,12 +66,10 @@ jobs:
     needs: ci
     runs-on: windows-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
+        id: msys2
         with:
           msystem: MINGW64
           update: true
@@ -89,13 +77,15 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
-      # The steps of scripts\release.ps1: MSGA_STATIC, one self-contained exe.
       - name: Build
+        shell: pwsh
+        env:
+          # The action installs MSYS2 outside C:\msys64.
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=MinSizeRel -DMSGA_STATIC=ON -DMSGA_DEMO=OFF -DMSGA_BUILD_TESTS=OFF
-          cmake --build build-release --target msga --parallel
-          strip build-release/msga.exe
-          cp build-release/msga.exe msga-windows-x86_64.exe
+          scripts\release.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item build-release\msga.exe msga-windows-x86_64.exe
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
@@ -103,14 +93,13 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # All three or none: a release is made only when every binary was built.
   publish:
     name: Publish (draft)
     needs: [linux, macos, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: write # creating the release
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:

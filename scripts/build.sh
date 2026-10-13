@@ -8,6 +8,9 @@
 #   scripts/build.sh --demo    # also compile the demo workspace (msga --demo demo)
 #   scripts/build.sh --asan    # AddressSanitizer + LeakSanitizer → build-asan/msga
 #                              #   (run it with scripts/run-asan.sh)
+# CTEST_ARGS: more arguments for --test's ctest, split at spaces (the CI
+# workflow's per-test timeout and the tests it leaves out):
+#   CTEST_ARGS='--timeout 300 -E ^crash_tests$' scripts/build.sh --test
 # --test and --demo switch the option on in that build dir; it stays on there.
 set -euo pipefail
 
@@ -63,7 +66,12 @@ fi
 cmake --build "$BUILD_DIR" --parallel "$NPROC"
 
 if [[ "$TEST" == "1" ]]; then
-    ctest --test-dir "$BUILD_DIR" --output-on-failure -j "$NPROC"
+    CTEST_EXTRA=()
+    if [[ -n "${CTEST_ARGS:-}" ]]; then
+        read -r -a CTEST_EXTRA <<<"$CTEST_ARGS"
+    fi
+    ctest --test-dir "$BUILD_DIR" --output-on-failure -j "$NPROC" \
+        "${CTEST_EXTRA[@]+"${CTEST_EXTRA[@]}"}"
 fi
 
 echo "Built: ${BUILD_DIR}/msga"
