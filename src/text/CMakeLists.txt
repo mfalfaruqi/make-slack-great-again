@@ -25,6 +25,7 @@ endif()
 set(MSGA_HB_TARGET ${MSGA_HB_TARGET} PARENT_SCOPE) # text_tests calls HarfBuzz itself
 
 add_library(msga_text STATIC
+    colr.cpp
     font_index.cpp
     fonts.cpp
     glyph_cache.cpp

@@ -5,7 +5,8 @@ Test assets
 - avatars/deploybot.png: DiceBear "Bottts Neutral" by Pablo Stanley — free for
   personal and commercial use (https://bottts.com).
 - Everything else (workspace.png, images/, icons/, files/, canvases/, gifs/,
-  audio/, fixture.json) and the SVG renderer's fixtures in svg/: drawn from
+  audio/, fixture.json), the SVG renderer's fixtures in svg/ and the COLRv1
+  test font in fonts/ (built by fonts/make_colrv1_test.py): drawn from
   primitives, synthesised or written by hand for msga — same license as the
   msga repository.
 

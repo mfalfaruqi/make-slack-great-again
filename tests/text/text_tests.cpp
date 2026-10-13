@@ -660,6 +660,65 @@ void emojiVertical() {
         }
 }
 
+// COLRv1 paint graphs (Noto Color Emoji as Fedora ships it, issue #102) on
+// assets/fonts/colrv1-test.ttf: each glyph sampled at points whose colour
+// follows from its paints (see make_colrv1_test.py). ctest points the font
+// index at that font alone; run elsewhere, the case skips.
+void colrV1() {
+    const FontKey k = fonts::fallback(0xE000, Style{});
+    if (k == fonts::kNoFont || fonts::familyName(k) != "msga colrv1 test") {
+        std::printf("  MSGA_NEXT_FONT_DIRS is not tests/assets/fonts; skipped\n");
+        return;
+    }
+    constexpr float kPpem = 100, kScale = kPpem / 1000; // the font has 1000 units per em
+    struct Probe {
+        uint32_t cp;
+        float    x, y;      // font units
+        uint32_t want;      // premultiplied 0xAARRGGBB
+        int      tolerance; // per channel
+    };
+    const Probe probes[] = {
+        {0xE000, 200, 0, 0xffff0000, 24},    // linear: p0 red
+        {0xE000, 335, -45, 0xffffd900, 24},  // halfway, turned by p2: yellow
+        {0xE000, 470, -90, 0xff0000ff, 24},  // p1 projected: blue
+        {0xE000, 605, -135, 0xffffd900, 32}, // reflect: back to yellow
+        {0xE001, 400, 250, 0xffff2b00, 40},  // radial inside the start circle, repeat
+        {0xE002, 350, 450, 0xff009900, 24},  // sweep at 135°: green
+        {0xE002, 650, 326, 0xffff0000, 8},   // before the start angle: padded red
+        {0xE003, 500, 300, 0xffff0000, 8},   // rotated box
+        {0xE003, 150, 700, 0xffffd900, 8},   // backdrop
+        {0xE004, 500, 300, 0x00000000, 8},   // dest-out hole
+        {0xE004, 100, 700, 0xff0000ff, 160}, // outside the disc: the gradient, opaque
+        {0xE005, 640, 600, 0xff4cc84c, 110}, // 70 % green over the reused gradient
+        {0xE006, 300, 300, 0xffc6c6ff, 12},  // hue of blue on yellow
+        {0xE006, 750, 500, 0xffff0099, 12},  // screen: red on purple
+        {0xE006, 750, 50, 0xff9a00af, 12},   // soft light: half white on purple
+        {0xE006, 880, 380, 0xff800099, 12},  // purple backdrop alone
+        {0xE007, 200, 600, 0x80800000, 8},   // red at alpha 0.5
+        {0xE007, 500, 300, 0xff000000, 8},   // foreground colour: black
+    };
+    for (const Probe &pr : probes) {
+        hb_codepoint_t gid = 0;
+        CHECK(hb_font_get_nominal_glyph(fonts::hbFont(k), pr.cp, &gid));
+        fonts::Raster r;
+        CHECK(fonts::rasterize(k, gid, uint32_t(kPpem * 64), 0, &r));
+        CHECK(r.color && r.argb);
+        if (!r.argb)
+            continue;
+        const int u   = int(std::floor(pr.x * kScale)) - r.left;
+        const int v   = r.top - 1 - int(std::floor(pr.y * kScale));
+        uint32_t  got = 0;
+        if (u >= 0 && v >= 0 && u < r.w && v < r.h)
+            got = r.argb[size_t(v) * r.pitch + u];
+        bool ok = true;
+        for (int s = 0; s < 32; s += 8)
+            ok = ok && std::abs(int((got >> s) & 255) - int((pr.want >> s) & 255)) <= pr.tolerance;
+        if (!ok)
+            std::printf("  U+%04X at (%g, %g): %08x, want %08x\n", pr.cp, pr.x, pr.y, got, pr.want);
+        CHECK(ok);
+    }
+}
+
 // The pixels a layout paints at `scale` on a fixed backdrop (paintAs `as`).
 std::vector<uint32_t> pixels(const Layout &l, float scale, const gfx::Color *as = nullptr) {
     gfx::Bitmap  bmp(320, 80);
@@ -898,6 +957,7 @@ constexpr Case kCases[] = {
     {"emoji_color", emojiColor},
     {"emoji_paint", emojiPaint},
     {"emoji_vertical", emojiVertical},
+    {"colrv1", colrV1},
     {"rtl", rtl},
     {"cjk_fallback", cjkFallback},
     {"hit_roundtrip", hitRoundtrip},

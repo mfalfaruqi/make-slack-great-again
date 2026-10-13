@@ -1,11 +1,13 @@
 #include "text/fonts.h"
 
+#include "text/colr.h"
 #include "text/font_index.h"
 
 #include "base/str.h"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include FT_COLOR_H
 #include FT_MULTIPLE_MASTERS_H
 #include FT_OUTLINE_H
 
@@ -51,7 +53,7 @@ constexpr const char *kMonoFamilies[] = {
 };
 // The OS's own colour emoji font first: Segoe UI
 // Emoji (COLR) on Windows, Apple Color Emoji (sbix) on macOS, Noto Color
-// Emoji (CBDT) on Linux.
+// Emoji (CBDT, or COLRv1 on Fedora 43+) on Linux.
 constexpr const char *kEmojiFamilies[] = {
 #if defined(_WIN32)
     "segoe ui emoji",
@@ -541,6 +543,25 @@ bool rasterize(FontKey k, uint32_t glyph, uint32_t ppem64, int phase, Raster *ou
         out->color      = true;
         out->argb       = g->scratchColor.pixels();
         return true;
+    }
+
+    // COLRv1 (Noto Color Emoji on Fedora 43+): a paint graph FreeType leaves
+    // to us. Glyphs that also have COLRv0 layers keep the layered path below.
+    if (rec.flags & kColor) {
+        FT_UInt          layerGlyph, layerColor;
+        FT_LayerIterator it{};
+        int              left, top;
+        if (!FT_Get_Color_Glyph_Layer(f, glyph, &layerGlyph, &layerColor, &it) &&
+            renderColrV1(g->ft, f, glyph, ppem, float(phase) / 4, &g->scratchColor, &left, &top)) {
+            out->w     = g->scratchColor.width();
+            out->h     = g->scratchColor.height();
+            out->pitch = out->w;
+            out->left  = left;
+            out->top   = top;
+            out->color = true;
+            out->argb  = g->scratchColor.pixels();
+            return true;
+        }
     }
 
     if (L.wghtAxis >= 0 && L.ftWght != wghtOf(k)) {
