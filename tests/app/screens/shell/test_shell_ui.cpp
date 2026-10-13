@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 
@@ -95,9 +96,14 @@ struct Fake : fake::FakeBackend {
         done(false, statusError);
     }
     void loadMembers(ConvRef conv, MembersDone done) override {
-        if (membersError.empty())
+        if (!membersError.empty())
+            return done({}, membersError);
+        if (!holdMembers)
             return fake::FakeBackend::loadMembers(conv, std::move(done));
-        done({}, membersError);
+        // Kept back until the test lets it go.
+        releaseMembers = [this, conv, done = std::move(done)] {
+            fake::FakeBackend::loadMembers(conv, done);
+        };
     }
     void loadPins(ConvRef conv, PinsDone done) override {
         if (pinsError.empty())
@@ -133,6 +139,12 @@ struct Fake : fake::FakeBackend {
     int         broadcasts = 0;
     ConvRef     suggestFor = kNoConv;
     std::string membersError, pinsError, lastBlocks;
+
+    // holdMembers: loadMembers waits for releaseMembers() instead of
+    // answering kReadLatencyMs later, for what a test reads in between.
+    bool                  holdMembers = false;
+    std::function<void()> releaseMembers;
+
     std::string scheduleError; // scheduleMessage fails with it
     void        refreshScheduled() override { ++scheduledRefreshes; }
     void        cancelScheduled(const std::string &id, Done done) override {
@@ -873,11 +885,17 @@ TEST("header: the members popup grows to its list when the count was unknown") {
     hd.refresh();
     CHECK_FALSE(hd.memberCount()->visible());
     const ui::RectF anchor{900, 40, 40, 28};
+    // The list is held back until the loading height is read: it comes
+    // kReadLatencyMs (25) after the open, and on a loaded machine the pump
+    // below (20 ms of loop time) can take longer than that.
+    h.backend.holdMembers = true;
     hd.openMembers(anchor);
     pump();
     ui::Popup *p = h.win->topPopup();
     REQUIRE(p != nullptr);
     const float loading = p->frame().h; // one row while the count is unknown
+    REQUIRE(h.backend.releaseMembers != nullptr);
+    h.backend.releaseMembers();
     REQUIRE(until([&] { return hasText(p, "9 members"); }));
     pump();
     // Six whole rows of 60 (the cap), still under the button and in the window.
