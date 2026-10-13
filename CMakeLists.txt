@@ -29,6 +29,17 @@ else()
     set(MSGA_SIZE_OPT -Os)
 endif()
 
+# MinGW GCC 16: -Os/-Oz factor each constructor into a "unified" one (C4,
+# -fdeclone-ctor-dtor), and since 16 libstdc++ declares std::string as an
+# extern template in C++20 too. Together a std::string move that isn't
+# inlined calls basic_string's C4, which the library does not export (only C1
+# and C2): "undefined reference to basic_string(basic_string&&)" at link
+# time. Without the factoring the call goes to C1. For every target, plat
+# and the third-party C++ included.
+if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16)
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fno-declone-ctor-dtor>)
+endif()
+
 # Flags for every msga module (not for third-party code, which gets its own).
 add_library(msga_flags INTERFACE)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
