@@ -190,10 +190,15 @@ void cjkFallback() {
     const std::string fam = fonts::familyName(f);
     std::printf("  日 → %s\n", fam.c_str());
     CHECK(fonts::hasGlyph(f, 0x65E5) && fonts::hasGlyph(f, 0x8A9E));
+#ifndef _WIN32
+    // Not on Windows: its CJK families share no word (Yu Gothic, Meiryo,
+    // SimSun, Microsoft YaHei, Dotum, …), and which of them a machine has
+    // depends on its language features. The glyphs above are the test there.
     CHECK(
         fam.find("cjk") != std::string::npos || fam.find("droid") != std::string::npos ||
         fam.find("han") != std::string::npos || fam.find("gothic") != std::string::npos
     );
+#endif
     CHECK(fonts::hasGlyph(fonts::fallback(0x0634, Style{}), 0x0634)); // Arabic
     CHECK(fonts::hasGlyph(fonts::fallback(0x05D0, Style{}), 0x05D0)); // Hebrew
     const FontKey cyr = fonts::primary(Style{});
@@ -594,7 +599,9 @@ void emojiPaint() {
         "\xF0\x9F\x8F\xA1",                             // 🏡 house with garden
         "\xE2\x9D\xA4\xEF\xB8\x8F",                     // ❤️ (VS16)
         "\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x92\xBB", // 👩‍💻 (ZWJ)
-        "\xF0\x9F\x87\xB8\xF0\x9F\x87\xAA",             // 🇸🇪
+#ifndef _WIN32 // Segoe UI Emoji has no flags: Windows shows the two letters
+        "\xF0\x9F\x87\xB8\xF0\x9F\x87\xAA", // 🇸🇪
+#endif
         "\xF0\x9F\xAB\xA0", // 🫠 melting face: not in Apple's 40/48/52 strikes
     };
     constexpr int   kItems = int(std::size(items));

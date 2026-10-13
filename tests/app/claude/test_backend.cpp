@@ -25,6 +25,7 @@
 #include "base/json.h"
 #include "base/process.h"
 #include "base/str.h"
+#include "base/winstr.h"
 #include "support/test.h"
 #include "base/time.h"
 #include "plat/plat.h"
@@ -40,7 +41,6 @@
 #include <optional>
 #include <string>
 #include <unistd.h>
-#include <utime.h>
 #include <vector>
 
 using namespace claude;
@@ -69,7 +69,14 @@ void writeFile(const std::string &path, std::string_view bytes, int mode = 0644)
 
 void appendFile(const std::string &path, std::string_view bytes) {
     file::makeDirs(file::dirName(path));
-    if (FILE *f = std::fopen(path.c_str(), "ab")) {
+#ifdef _WIN32
+    // fopen reads a path in the ANSI code page; these are UTF-8 (a test
+    // writes under a folder named "jöran").
+    FILE *f = _wfopen(base::widePath(path).c_str(), L"ab");
+#else
+    FILE *f = std::fopen(path.c_str(), "ab");
+#endif
+    if (f) {
         std::fwrite(bytes.data(), 1, bytes.size(), f);
         std::fclose(f);
     }
@@ -2126,9 +2133,10 @@ TEST("backend: a subagent that stopped isn't read to tell it isn't running") {
         prompt("Read the docs and report", "2026-09-25T10:00:02.000Z", false) +
             assistantText("The docs say X.", "2026-09-25T10:00:08.000Z")
     );
-    utimbuf times;
-    times.actime = times.modtime = 1790330408; // 10:00:08Z
-    REQUIRE(::utime(sub.c_str(), &times) == 0);
+    // Not utime: on Windows msvcrt's goes through its own local time, read
+    // from a TZ it parses its own way (the tests pin TZ=Europe/Stockholm),
+    // and the file's time comes out an hour or more off.
+    REQUIRE(base::test::setModifiedTime(sub, 1790330408)); // 10:00:08Z
 
     // The session works (its typing pump looks for running subagents every
     // tick); the stopped one is never read.

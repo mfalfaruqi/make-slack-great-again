@@ -723,7 +723,17 @@ TEST("shortcuts: Up in an empty composer edits my last message, Escape leaves th
     auto         &c      = h.composer();
     h.edit().insertText("mine");
     h.key(K::Enter);
-    pump(20);
+    // Until the send is confirmed (FakeBackend::kSendConfirmMs later): on a
+    // slow machine it otherwise lands between reading "my last message" here
+    // and the Up below, which then edits the newer one.
+    const auto confirmed = [&] {
+        const auto &msgs = h.store.conversation(design).messages;
+        return !msgs.empty() && msgs.back().user == h.store.me && !msgs.back().pending &&
+               msgs.back().text == "mine";
+    };
+    for (int i = 0; i < 1500 && !confirmed(); ++i)
+        pump(1);
+    REQUIRE(confirmed());
     const Message *last = nullptr;
     for (const Message &m : h.store.conversation(design).messages)
         if (m.user == h.store.me && !m.pending)

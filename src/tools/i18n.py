@@ -105,6 +105,12 @@ def parse_literals(s, i):
     return data.decode('utf-8'), i
 
 
+def repo_path(path):
+    """`path` from the repository's root, with '/' on every OS: what the .po
+    files' references hold."""
+    return os.path.relpath(path, os.path.dirname(SRC)).replace(os.sep, '/')
+
+
 def source_files():
     for d in SCAN_DIRS:
         for root, dirs, files in os.walk(os.path.join(SRC, d)):
@@ -121,7 +127,7 @@ def extract():
         text = open(path, encoding='utf-8').read()
         if path.endswith(os.path.join('base', 'i18n.h')):
             continue  # the N_ definition itself
-        rel = os.path.relpath(path, os.path.dirname(SRC))
+        rel = repo_path(path)
         for m in CALL.finditer(text):
             msgid, i = parse_literals(text, m.end())
             if msgid is None:
@@ -351,6 +357,28 @@ def generated_cpp(pos):
     return '\n'.join(out)
 
 
+PACKED = re.compile(r'// (\d+ translations: \d+ bytes), \d+ deflated\.\n'
+                    r'const unsigned char (k_\w+)\[\d+\] = \{\n(.*?)\n\};', re.S)
+
+
+def unpacked(cpp):
+    """The generated file with every deflated table replaced by its bytes
+    inflated: what it holds, whichever zlib packed it. zlib-ng (CPython 3.14's
+    on Windows, some distributions' system zlib) packs the same table into
+    other bytes than zlib does."""
+    def inflate(m):
+        try:
+            data = zlib.decompress(bytes(int(x) for x in re.findall(r'\d+', m.group(3))), -15)
+        except (zlib.error, ValueError):
+            return m.group(0)
+        return f'{m.group(1)} {m.group(2)} {data.hex()}'
+    return PACKED.sub(inflate, cpp)
+
+
+def up_to_date(path, have, want):
+    return have == want or (path == GENERATED and unpacked(have) == unpacked(want))
+
+
 def po_files():
     return sorted(os.path.join(I18N_DIR, f) for f in os.listdir(I18N_DIR) if f.endswith('.po'))
 
@@ -385,7 +413,7 @@ def main():
     if cmd not in ('update', 'check', 'missing'):
         sys.exit(__doc__)
     if cmd == 'missing':
-        only = {os.path.relpath(os.path.abspath(f), os.path.dirname(SRC)) for f in sys.argv[2:]}
+        only = {repo_path(os.path.abspath(f)) for f in sys.argv[2:]}
         for path in po_files():
             _, entries = read_po(path)
             have = {e.msgid for e in entries if any(e.msgstr.values())}
@@ -395,7 +423,7 @@ def main():
         return
     want, found, pos = build()
     stale = [p for p, t in want.items()
-             if not os.path.exists(p) or open(p, encoding='utf-8').read() != t]
+             if not os.path.exists(p) or not up_to_date(p, open(p, encoding='utf-8').read(), t)]
     if cmd == 'check':
         for p in stale:
             print(f'out of date: {os.path.relpath(p, SRC)}', file=sys.stderr)
@@ -403,7 +431,7 @@ def main():
             sys.exit('run: src/tools/i18n.py update   (or cmake --build <dir> --target translations)')
         return
     for p in stale:
-        open(p, 'w', encoding='utf-8').write(want[p])
+        open(p, 'w', encoding='utf-8', newline='\n').write(want[p])
     for code, (header, entries) in pos:
         live = [e for e in entries if not e.obsolete]
         done = sum(1 for e in live if 'fuzzy' not in e.flags and any(e.msgstr.values()))
