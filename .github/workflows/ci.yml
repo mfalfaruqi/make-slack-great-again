@@ -7,6 +7,8 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+  # release.yml runs all of this on a version tag before it builds a release.
+  workflow_call:
 
 # A newer push to the same branch or pull request replaces the run in flight.
 concurrency:
