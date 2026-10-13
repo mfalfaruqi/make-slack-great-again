@@ -1,11 +1,14 @@
 # Pushing a version tag runs CI, builds the release binaries and attaches
 # them to a draft GitHub Release (publish it from the Releases page):
 #   git tag v41 && git push origin v41
+# A manual run builds the same binaries without a release: they are the
+# run's artifacts.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -95,6 +98,7 @@ jobs:
 
   publish:
     name: Publish (draft)
+    if: github.ref_type == 'tag'
     needs: [linux, macos, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
