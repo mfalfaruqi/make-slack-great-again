@@ -63,6 +63,14 @@ fi
 # without lld) doesn't, so strip here. Idempotent on an already-stripped file.
 strip "$BIN"
 
+# macOS: the build signed the bundle before this (src/app/screens/shell's
+# post-build step), and strip rewrote the executable under that signature. A
+# bundle whose signature no longer matches is killed at launch ("Code
+# Signature Invalid"), so sign it again, the same ad-hoc way.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    codesign --force --deep --sign - "${BUILD_DIR}/msga.app"
+fi
+
 echo ""
 if [[ -f "${BUILD_DIR}/msga.map" ]]; then
     python3 "${PROJECT_ROOT}/src/tools/size_report.py" "${BUILD_DIR}/msga.map"
